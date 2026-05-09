@@ -36,19 +36,19 @@ Estado: EN CURSO
 
 ### En este momento estoy trabajando en
 ```
-Nada — módulo auth completado. Próximo: módulo de usuarios (CRUD + invitaciones).
+Nada — módulos auth y usuarios completados.
 ```
 
 ### Próximo paso concreto
 ```
-Implementar gestión de usuarios:
-- GET/POST /users (RRHH lista y crea colaboradores)
-- POST /users/bulk (importación masiva)
-- GET/PUT /users/{id}
-- POST /users/{id}/invite (genera y envía invite_token)
-- DELETE/deactivate /users/{id}
-Archivos a crear: app/repositories/user_repository.py (ampliar),
-                  app/services/user_service.py, app/routers/users.py
+Fase 2: Recibos de sueldo
+- Modelo: periodos_liquidacion, recibos, firmas_electronicas (migración)
+- POST /recibos/periodos (crear período)
+- POST /recibos/periodos/{id}/upload (subir ZIP de PDFs)
+- GET  /recibos/periodos/{id}/preview (ver mapeo CUIL→colaborador)
+- POST /recibos/periodos/{id}/distribuir (distribuir recibos)
+- GET  /recibos/mis-recibos (colaborador ve sus recibos)
+- POST /recibos/{id}/firmar (firma electrónica probatoria)
 ```
 
 ### Bloqueantes activos
@@ -63,7 +63,7 @@ Ninguno
 | Fase | Descripción | Estado | Fecha |
 |------|-------------|--------|-------|
 | Fase 0 | Setup + documentación técnica base | ✅ Completada | 2026-05-09 |
-| Fase 1 | Auth + Multi-tenant + Roles + Usuarios | 🔄 En curso (auth ✅, usuarios ⏳) | 2026-05-09 |
+| Fase 1 | Auth + Multi-tenant + Roles + Usuarios | ✅ Completada | 2026-05-09 |
 | Fase 2 | Recibos de sueldo + Firma electrónica | ⏳ Pendiente | — |
 | Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ⏳ Pendiente | — |
 | Fase 4 | Licencias + Aprobación RRHH | ⏳ Pendiente | — |
@@ -230,8 +230,8 @@ META_APP_SECRET=           # Para validar firma HMAC de webhooks
 **Commits realizados:**
 - Pendiente commitear módulo auth
 
-**Quedó pendiente:** Commit del módulo auth, módulo de usuarios (CRUD + invitaciones)
-**Estado al cerrar:** Auth implementado y testeado. Base lista para módulo de usuarios.
+**Quedó pendiente:** (nada — todo commiteado)
+**Estado al cerrar:** Auth + usuarios implementados. 29 tests pasando. Próximo: Fase 2 recibos.
 
 ---
 
