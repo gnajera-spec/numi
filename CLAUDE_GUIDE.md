@@ -29,8 +29,8 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-[FASE 1] — Auth + Multi-tenant + Roles + Usuarios
-Estado: EN CURSO
+[FASE 3] — WhatsApp Bot
+Estado: PENDIENTE — próxima sesión
 Última actualización: 2026-05-09
 ```
 
@@ -109,12 +109,14 @@ Ninguno
 | DT-002 | MFA (TOTP) pendiente hasta antes de producción | Seguridad para roles admin/rrhh/médico | Alta | 2026-05-09 |
 | DT-003 | Firma digital Ley 25.506 fuera de scope v1.0 | Legal — implementar en v1.1 | Media | 2026-05-09 |
 | DT-004 | Reset de contraseña por email fuera de scope v1.0 | UX — flujo de recuperación manual | Baja | 2026-05-09 |
+| DT-005 | Job store de upload de recibos en `dict` en memoria — no sobrevive restart ni multi-proceso | Confiabilidad en deploy multi-worker | Alta | 2026-05-09 |
+| DT-006 | `POST /periodos/{id}/renotificar` no envía WhatsApp — devuelve count de targets, bot pendiente | Funcionalidad — se completa en Fase 3 | Alta | 2026-05-09 |
 
 ---
 
 ## PROBLEMAS CONOCIDOS
 
-*Ninguno al inicio del proyecto.*
+- **IDE diagnostics falsos positivos:** VSCode muestra warnings "Package X not installed" en `requirements.txt`. Se debe a que el intérprete de Python apuntado por VSCode no es el venv del proyecto. Los paquetes están correctamente instalados en `backend/.venv`. No es un error real.
 
 ---
 
@@ -155,29 +157,66 @@ Ninguno
 5. Si aprobada: saldo_licencias se actualiza automáticamente
 ```
 
-### Módulos del backend
+### Módulos del backend — estado de implementación
 ```
 app/routers/
-  auth.py          → POST /auth/login, /refresh, /logout, GET /auth/me
-  tenants.py       → CRUD tenants (super_admin)
-  users.py         → CRUD usuarios + invitaciones
-  recibos.py       → Upload, distribución, firma
-  comunicaciones.py → Creación, segmentación, envío
-  licencias.py     → Solicitudes, aprobación, saldo
-  medico.py        → Fichas, aptitudes, accidentes (acceso restringido)
-  whatsapp.py      → Webhook entrante + mensajes salientes
+  auth.py          ✅ POST /auth/login, /refresh, /logout, /activate, GET /auth/me
+  users.py         ✅ CRUD + invitaciones + ciclo de vida (suspend/reactivate/baja)
+  recibos.py       ✅ Períodos, upload ZIP/PDF, distribución, firma, CSV export
+  tenants.py       ⏳ CRUD tenants (super_admin) — pendiente
+  comunicaciones.py ⏳ Pendiente (Fase 5)
+  licencias.py     ⏳ Pendiente (Fase 4)
+  medico.py        ⏳ Pendiente (Fase 7)
+  whatsapp.py      ⏳ Pendiente (Fase 3) — próxima
+```
+
+### Repositorios implementados
+```
+app/repositories/
+  user_repository.py       ✅ CRUD + ciclo de vida + búsqueda
+  token_repository.py      ✅ refresh tokens + invite tokens
+  colaborador_repository.py ✅ crear/actualizar perfil
+  periodo_repository.py    ✅ CRUD períodos de liquidación
+  recibo_repository.py     ✅ CRUD recibos + firmas + export
 ```
 
 ### Variables de entorno requeridas
 ```
-APP_ENV=
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-SECRET_KEY=
-ALLOWED_ORIGINS=
-ENCRYPTION_KEY=            # AES-256 para datos sensibles
-META_VERIFY_TOKEN=         # Webhook verification de Meta
-META_APP_SECRET=           # Para validar firma HMAC de webhooks
+APP_ENV=development
+SUPABASE_URL=                  # https://ssppdyvxaeplsyheylyt.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=     # service_role key del proyecto Supabase
+SECRET_KEY=                    # mín. 32 chars, aleatorio — firma JWTs
+ALLOWED_ORIGINS=["http://localhost:5173"]
+ENCRYPTION_KEY=                # AES-256 para datos médicos sensibles (Fase 7)
+META_VERIFY_TOKEN=             # Webhook verification de Meta (Fase 3)
+META_APP_SECRET=               # Para validar firma HMAC de webhooks (Fase 3)
+```
+
+### Migraciones aplicadas en Supabase remoto
+```
+20260509210736_init_base_schema.sql      — tenants, sedes, depto, puestos, convenios,
+                                           users, colaborador_perfil, invite_tokens, audit_log
+20260509212458_add_refresh_tokens.sql    — refresh_tokens
+20260509215257_add_recibos_schema.sql    — periodos_liquidacion, recibos,
+                                           firmas_electronicas, storage bucket 'recibos'
+```
+
+### Storage Supabase
+```
+Bucket: recibos (privado)
+Path:   {tenant_id}/{periodo_id}/{cuil}.pdf
+Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
+```
+
+### Convenciones clave de código
+```
+- JWT: HS256, secret_key mín 32 chars — access 8h, refresh 30d
+- Tokens: siempre hash SHA-256 en DB, nunca el valor plano
+- Tenant isolation: tenant_id extraído del JWT, NUNCA del body/query
+- Paginación: Pagination(total, page, page_size, pages, next, prev)
+- Tests: UUIDs reales (formato 00000000-...), no strings como "user-uuid-1"
+- pytest-asyncio mode: STRICT — todos los tests async deben tener @pytest.mark.asyncio
+- Storage async: await db.storage.from_("bucket").upload/create_signed_url(...)
 ```
 
 ---
@@ -226,7 +265,8 @@ META_APP_SECRET=           # Para validar firma HMAC de webhooks
   - Tests: 19/19 pasando (repositories, services, routers)
 
 **Commits realizados:**
-- Pendiente commitear módulo auth
+- `971b55c` — feat: implement auth module with full test coverage
+- `0d18ab4` — feat: implement users module with full lifecycle management
 
 **Quedó pendiente:** (nada — todo commiteado)
 **Estado al cerrar:** Auth + usuarios implementados. 29 tests pasando. Próximo: Fase 2 recibos.
@@ -255,7 +295,11 @@ META_APP_SECRET=           # Para validar firma HMAC de webhooks
 - DT-005: job store de upload en memoria (dict process-scoped) — debe reemplazarse con Redis o tabla DB
 - DT-006: renotificar por WhatsApp pendiente de implementación del bot
 
-**Estado al cerrar:** Fases 1 y 2 completas. Base sólida. Próximo: Fase 3 WhatsApp bot.
+**Commits realizados:**
+- `5082ae2` — feat: implement recibos module (fase 2)
+- `4f466be` — docs: update CLAUDE_GUIDE — fase 2 completada, próximo WhatsApp bot
+
+**Estado al cerrar:** Fases 1 y 2 completas. 41 tests pasando. Próximo: Fase 3 WhatsApp bot.
 
 ---
 
