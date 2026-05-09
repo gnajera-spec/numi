@@ -99,7 +99,7 @@ class AuthService:
         if not invite:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Token de invitación inválido")
 
-        if invite.get("used_at"):
+        if invite.get("used_at") or invite.get("invalidated_at"):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "El token ya fue utilizado")
 
         if _parse_dt(invite["expires_at"]) < datetime.now(timezone.utc):
