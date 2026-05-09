@@ -1,7 +1,28 @@
 {
-    "chat.tools.terminal.autoApprove": {
-        "git remote": true,
-        "cp": true,
-        "mkdir": true
-    }
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(pytest:*)",
+      "Bash(python:*)",
+      "Bash(pip:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(uvicorn:*)",
+      "Bash(supabase:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Edit",
+      "Read",
+      "Write",
+      "WebFetch"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(curl * | bash:*)",
+      "Bash(wget:*)"
+    ]
+  }
 }
