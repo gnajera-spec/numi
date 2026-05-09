@@ -29,26 +29,26 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-[FASE 0] — Setup y documentación base
+[FASE 1] — Auth + Multi-tenant + Roles + Usuarios
 Estado: EN CURSO
 Última actualización: 2026-05-09
 ```
 
 ### En este momento estoy trabajando en
 ```
-Completar documentación técnica base antes de implementar
-- DATA_MODEL.md: ✅ Completo (HRConnect — 30 tablas)
-- API_SPEC.md: ✅ Completo (HRConnect — auth, tenants, users, recibos, comunicaciones, licencias, médico, whatsapp)
-- ARCHITECTURE.md: ❌ Pendiente (aún es template)
-- Entorno backend (venv): ❌ Pendiente
-- Entorno frontend (Vite): ❌ Pendiente
+Nada — módulo auth completado. Próximo: módulo de usuarios (CRUD + invitaciones).
 ```
 
 ### Próximo paso concreto
 ```
-1. Levantar entorno: backend venv + frontend Vite
-2. Primera migración: schema base (tenants, users, invite_tokens, sedes, departamentos, puestos, convenios)
-3. Implementar módulo auth (REQ_01 / REQ_03): login, refresh, logout, activate, me
+Implementar gestión de usuarios:
+- GET/POST /users (RRHH lista y crea colaboradores)
+- POST /users/bulk (importación masiva)
+- GET/PUT /users/{id}
+- POST /users/{id}/invite (genera y envía invite_token)
+- DELETE/deactivate /users/{id}
+Archivos a crear: app/repositories/user_repository.py (ampliar),
+                  app/services/user_service.py, app/routers/users.py
 ```
 
 ### Bloqueantes activos
@@ -62,8 +62,8 @@ Ninguno
 
 | Fase | Descripción | Estado | Fecha |
 |------|-------------|--------|-------|
-| Fase 0 | Setup + documentación técnica base | 🔄 En curso | 2026-05-09 |
-| Fase 1 | Auth + Multi-tenant + Roles + Usuarios | ⏳ Pendiente | — |
+| Fase 0 | Setup + documentación técnica base | ✅ Completada | 2026-05-09 |
+| Fase 1 | Auth + Multi-tenant + Roles + Usuarios | 🔄 En curso (auth ✅, usuarios ⏳) | 2026-05-09 |
 | Fase 2 | Recibos de sueldo + Firma electrónica | ⏳ Pendiente | — |
 | Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ⏳ Pendiente | — |
 | Fase 4 | Licencias + Aprobación RRHH | ⏳ Pendiente | — |
@@ -205,6 +205,33 @@ META_APP_SECRET=           # Para validar firma HMAC de webhooks
 **Deuda generada:** DT-001 (queue), DT-002 (MFA), DT-003 (firma digital), DT-004 (reset password)
 **Quedó pendiente:** API_SPEC.md para HRConnect, setup entornos, primera migración
 **Estado al cerrar:** Documentación de datos completa. Falta API_SPEC y entornos para empezar a codear.
+
+### 2026-05-09 — Sesión 2
+**Duración aproximada:** 2 horas
+**Objetivo de la sesión:** Módulo auth completo
+
+**Completado:**
+- API_SPEC.md completo para HRConnect (todos los endpoints)
+- Setup backend: venv Python 3.12, requirements.txt, estructura de carpetas
+- Setup frontend: React 18 + TypeScript + Vite + Tailwind v4
+- Migración inicial aplicada en Supabase remoto (tenants, sedes, depto, puestos, convenios, users, colaborador_perfil, invite_tokens, audit_log)
+- Migración refresh_tokens aplicada en Supabase remoto
+- Módulo auth completo:
+  - `app/schemas/auth.py` — LoginRequest, ActivateRequest (con validadores), RefreshRequest, LogoutRequest
+  - `app/schemas/user.py` — UserSummary (computed full_name), UserMe, TokenPair, LoginResponse, ActivateResponse, RefreshResponse
+  - `app/repositories/user_repository.py` — get_by_email, get_by_id, get_by_id_with_profile, update_last_login, activate, get_by_cuil_and_tenant
+  - `app/repositories/token_repository.py` — create/get/revoke refresh_token, get/use invite_token
+  - `app/services/auth_service.py` — login, refresh, logout, activate, get_me
+  - `app/dependencies/auth.py` — get_current_user, require_role
+  - `app/routers/auth.py` — 5 endpoints registrados
+  - `main.py` actualizado con auth router
+  - Tests: 19/19 pasando (repositories, services, routers)
+
+**Commits realizados:**
+- Pendiente commitear módulo auth
+
+**Quedó pendiente:** Commit del módulo auth, módulo de usuarios (CRUD + invitaciones)
+**Estado al cerrar:** Auth implementado y testeado. Base lista para módulo de usuarios.
 
 ---
 

@@ -23,7 +23,9 @@ app.add_middleware(
 
 register_exception_handlers(app)
 
-# app.include_router(...)
+from app.routers import auth as auth_router  # noqa: E402
+
+app.include_router(auth_router.router)
 
 
 @app.get("/health")
