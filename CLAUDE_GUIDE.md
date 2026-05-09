@@ -36,19 +36,17 @@ Estado: EN CURSO
 
 ### En este momento estoy trabajando en
 ```
-Nada — módulos auth y usuarios completados.
+Nada — fases 1 y 2 completadas.
 ```
 
 ### Próximo paso concreto
 ```
-Fase 2: Recibos de sueldo
-- Modelo: periodos_liquidacion, recibos, firmas_electronicas (migración)
-- POST /recibos/periodos (crear período)
-- POST /recibos/periodos/{id}/upload (subir ZIP de PDFs)
-- GET  /recibos/periodos/{id}/preview (ver mapeo CUIL→colaborador)
-- POST /recibos/periodos/{id}/distribuir (distribuir recibos)
-- GET  /recibos/mis-recibos (colaborador ve sus recibos)
-- POST /recibos/{id}/firmar (firma electrónica probatoria)
+Fase 3: WhatsApp Bot (FSM core + flujos recibos)
+- Webhook handler: POST /whatsapp/webhook (verificación + mensajes entrantes)
+- Session manager (estado de conversación por usuario en DB)
+- Flujo de recibos: notificación HSM + VER + CONFIRMO
+- Flujo de activación: link al portal
+Nota: requiere configurar Meta Cloud API (webhook URL, access token, verify token)
 ```
 
 ### Bloqueantes activos
@@ -64,7 +62,7 @@ Ninguno
 |------|-------------|--------|-------|
 | Fase 0 | Setup + documentación técnica base | ✅ Completada | 2026-05-09 |
 | Fase 1 | Auth + Multi-tenant + Roles + Usuarios | ✅ Completada | 2026-05-09 |
-| Fase 2 | Recibos de sueldo + Firma electrónica | ⏳ Pendiente | — |
+| Fase 2 | Recibos de sueldo + Firma electrónica | ✅ Completada | 2026-05-09 |
 | Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ⏳ Pendiente | — |
 | Fase 4 | Licencias + Aprobación RRHH | ⏳ Pendiente | — |
 | Fase 5 | Comunicaciones institucionales | ⏳ Pendiente | — |
@@ -232,6 +230,32 @@ META_APP_SECRET=           # Para validar firma HMAC de webhooks
 
 **Quedó pendiente:** (nada — todo commiteado)
 **Estado al cerrar:** Auth + usuarios implementados. 29 tests pasando. Próximo: Fase 2 recibos.
+
+### 2026-05-09 — Sesión 3
+**Duración aproximada:** 1.5 horas
+**Objetivo de la sesión:** Fase 2 — Recibos de sueldo
+
+**Completado:**
+- Migración: periodos_liquidacion + recibos + firmas_electronicas + storage bucket `recibos` (privado)
+- DB trigger `sync_recibos_firmados` mantiene contador desnormalizado automáticamente
+- Módulo recibos completo (commit `5082ae2`):
+  - `GET/POST /periodos` — lista y crea períodos de liquidación
+  - `POST /periodos/{id}/upload` — sube ZIP o PDF, extrae CUIL de nombre de archivo, retorna preview
+  - `POST /periodos/{id}/upload/{job_id}/confirm` — sube PDFs a Supabase Storage, crea registros en DB
+  - `GET /periodos/{id}/recibos` — dashboard con estado de firma por colaborador
+  - `POST /periodos/{id}/renotificar` — re-notifica no firmados (WhatsApp pendiente DT-006)
+  - `GET /recibos` — recibos del colaborador autenticado
+  - `GET /recibos/{id}` — recibo con signed URL (24h) + marca visto_at
+  - `POST /recibos/{id}/firmar` — firma electrónica probatoria (hash SHA-256 + timestamp UTC + IP + session_id)
+  - `GET /recibos/export` — CSV con estado de firmas por período
+- python-multipart agregado a requirements
+- 12 tests nuevos, 41 totales pasando
+
+**Deuda generada:**
+- DT-005: job store de upload en memoria (dict process-scoped) — debe reemplazarse con Redis o tabla DB
+- DT-006: renotificar por WhatsApp pendiente de implementación del bot
+
+**Estado al cerrar:** Fases 1 y 2 completas. Base sólida. Próximo: Fase 3 WhatsApp bot.
 
 ---
 
