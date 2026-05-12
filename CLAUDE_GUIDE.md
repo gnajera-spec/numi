@@ -338,7 +338,8 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 **Deuda generada:**
 - DT-007: `whatsapp_id_hash` no se puebla en `create_user` — falta pasar hash desde user_service (requiere capturar número E.164 completo)
 
-**Commits realizados:** pendiente
+**Commits realizados:**
+- `5c41d1e` — feat: implement WhatsApp bot module (fase 3)
 
 **Estado al cerrar:** Fase 3 completa. 59 tests pasando. Próximo: Fase 4 Licencias.
 
