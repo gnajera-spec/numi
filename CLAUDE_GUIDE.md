@@ -29,23 +29,21 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-[FASE 4] — Licencias + Aprobación RRHH
+[FASE 5] — Comunicaciones institucionales
 Estado: COMPLETADA
 Última actualización: 2026-05-12
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada — fases 1, 2, 3 y 4 completadas.
+Nada — fases 1, 2, 3, 4 y 5 completadas.
 ```
 
 ### Próximo paso concreto
 ```
-Fase 5: Comunicaciones institucionales
-- Tablas: comunicaciones, comunicacion_destinatarios, comunicacion_adjuntos
-- Endpoints: POST /comunicaciones, POST /comunicaciones/{id}/enviar, GET /comunicaciones/colaborador
-- Flujo bot: comunicaciones_ver → comunicaciones_confirmar
-- Segmentación por sede/departamento/puesto/lista_custom
+Fase 6: Portal Web del colaborador
+- Frontend React: login, recibos, licencias, comunicaciones
+- Rutas protegidas, design system, apiClient
 ```
 
 ### Bloqueantes activos
@@ -66,7 +64,7 @@ Fase 5: Comunicaciones institucionales
 | Fase 2 | Recibos de sueldo + Firma electrónica | ✅ Completada | 2026-05-09 |
 | Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ✅ Completada | 2026-05-12 |
 | Fase 4 | Licencias + Aprobación RRHH | ✅ Completada | 2026-05-12 |
-| Fase 5 | Comunicaciones institucionales | ⏳ Pendiente | — |
+| Fase 5 | Comunicaciones institucionales | ✅ Completada | 2026-05-12 |
 | Fase 6 | Portal Web del colaborador | ⏳ Pendiente | — |
 | Fase 7 | Servicio Médico | ⏳ Pendiente | — |
 | Fase 8 | Reportes + Dashboard RRHH | ⏳ Pendiente | — |
@@ -168,25 +166,28 @@ app/routers/
   whatsapp.py      ✅ GET|POST /webhook, GET|PUT /config
   licencias.py     ✅ tipos, políticas, solicitudes (CRUD + aprobar/rechazar/cancelar), saldo
   tenants.py       ⏳ CRUD tenants (super_admin) — pendiente
-  comunicaciones.py ⏳ Pendiente (Fase 5)
+  comunicaciones.py ✅ POST /comunicaciones, GET /comunicaciones, GET /{id}, POST /{id}/adjuntos, POST /{id}/enviar, POST /{id}/reenviar, GET /colaborador, POST /{id}/confirmar
   medico.py        ⏳ Pendiente (Fase 7)
 ```
 
 ### Repositorios implementados
 ```
 app/repositories/
-  user_repository.py              ✅ CRUD + ciclo de vida + búsqueda + get_by_wa_id
-  token_repository.py             ✅ refresh tokens + invite tokens
-  colaborador_repository.py       ✅ crear/actualizar perfil
-  periodo_repository.py           ✅ CRUD períodos de liquidación
-  recibo_repository.py            ✅ CRUD recibos + firmas + export + get_latest_unsigned
-  whatsapp_config_repository.py   ✅ CRUD config WA por tenant
-  whatsapp_session_repository.py  ✅ FSM session manager (DB-based, TTL 10 min)
-  whatsapp_log_repository.py      ✅ log de mensajes inbound/outbound
-  tipo_licencia_repository.py     ✅ list (globales + tenant), get, create
-  politica_licencia_repository.py ✅ list, get_for_tipo, create
-  solicitud_licencia_repository.py ✅ create, get, list_all, list_by_user, has_overlap, update_estado
-  saldo_licencia_repository.py    ✅ get, list_for_user, ensure_saldo, add/subtract_pendientes, approve
+  user_repository.py                       ✅ CRUD + ciclo de vida + búsqueda + get_by_wa_id
+  token_repository.py                      ✅ refresh tokens + invite tokens
+  colaborador_repository.py                ✅ crear/actualizar perfil
+  periodo_repository.py                    ✅ CRUD períodos de liquidación
+  recibo_repository.py                     ✅ CRUD recibos + firmas + export + get_latest_unsigned
+  whatsapp_config_repository.py            ✅ CRUD config WA por tenant
+  whatsapp_session_repository.py           ✅ FSM session manager (DB-based, TTL 10 min)
+  whatsapp_log_repository.py               ✅ log de mensajes inbound/outbound
+  tipo_licencia_repository.py              ✅ list (globales + tenant), get, create
+  politica_licencia_repository.py          ✅ list, get_for_tipo, create
+  solicitud_licencia_repository.py         ✅ create, get, list_all, list_by_user, has_overlap, update_estado
+  saldo_licencia_repository.py             ✅ get, list_for_user, ensure_saldo, add/subtract_pendientes, approve
+  comunicacion_repository.py               ✅ create, get, list_by_tenant, update_estado, set_enviado, mark_enviado_completo
+  comunicacion_destinatario_repository.py  ✅ bulk_create, list_by_comunicacion, list_by_user, get_for_user, mark_leido/confirmado, get_metricas
+  comunicacion_adjunto_repository.py       ✅ create, list_by_comunicacion, upload_and_create
 ```
 
 ### Variables de entorno requeridas
@@ -211,9 +212,14 @@ META_APP_SECRET=               # App Secret de Meta para validar firma HMAC-SHA2
 20260512000000_add_whatsapp_schema.sql   — users.whatsapp_id_hash, whatsapp_config,
                                            whatsapp_sessions, whatsapp_message_log,
                                            whatsapp_templates (con 5 templates seed)
+20260512200000_add_licencias_schema.sql  — tipos_licencia, politicas_licencia,
+                                           solicitudes_licencia, saldo_licencias,
+                                           documentos_solicitud, seed 10 tipos
+20260512210000_add_comunicaciones_schema.sql — comunicaciones, comunicacion_destinatarios,
+                                               comunicacion_adjuntos, storage bucket 'comunicaciones'
 ```
 
-> **Pendiente aplicar en Supabase remoto:** `supabase db push` con la migración 20260512000000
+> **Pendiente aplicar en Supabase remoto:** `supabase db push` con las migraciones de licencias y comunicaciones
 
 ### Storage Supabase
 ```
@@ -236,6 +242,26 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 ---
 
 ## LOG DE SESIONES
+
+### 2026-05-12 — Sesión 6
+**Duración aproximada:** 1 hora
+**Objetivo de la sesión:** Fase 5 — Comunicaciones institucionales
+
+**Completado:**
+- Migración: `comunicaciones`, `comunicacion_destinatarios`, `comunicacion_adjuntos` + bucket storage `comunicaciones`
+- 3 repositorios: `comunicacion_repository`, `comunicacion_destinatario_repository`, `comunicacion_adjunto_repository`
+- `app/schemas/comunicaciones.py` — todos los schemas del módulo
+- `app/services/comunicacion_service.py` — lógica completa: create, list, get, add_adjunto, enviar, reenviar, list_for_colaborador, confirmar + segmentación por todos/sede/departamento/puesto/lista_custom + dispatch WA best-effort
+- `app/routers/comunicaciones.py` — 8 endpoints registrados
+- `main.py` actualizado con comunicaciones router
+- FSM WhatsApp extendido: opción 3️⃣ en menú + estados `comunicaciones_ver → comunicaciones_confirmar`, keywords `_KEYWORDS_COMUNICACIONES`, `_KEYWORDS_LEIDO`
+- `app/routers/whatsapp.py` actualizado para pasar `comunicacion_repo` y `comunicacion_dest_repo` al servicio
+- 26 tests nuevos (17 service + 9 router), 107 totales pasando
+
+**Commits realizados:**
+- Pendiente de commit
+
+**Estado al cerrar:** Fase 5 completa. 107 tests pasando. Próximo: Fase 6 Portal Web.
 
 ### 2026-05-09 — Sesión 1
 **Duración aproximada:** 1 hora

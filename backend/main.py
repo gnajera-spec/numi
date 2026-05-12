@@ -28,12 +28,14 @@ from app.routers import users as users_router  # noqa: E402
 from app.routers import recibos as recibos_router  # noqa: E402
 from app.routers import whatsapp as whatsapp_router  # noqa: E402
 from app.routers import licencias as licencias_router  # noqa: E402
+from app.routers import comunicaciones as comunicaciones_router  # noqa: E402
 
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
 app.include_router(recibos_router.router)
 app.include_router(whatsapp_router.router)
 app.include_router(licencias_router.router)
+app.include_router(comunicaciones_router.router)
 
 
 @app.get("/health")

@@ -2,14 +2,16 @@
 WhatsApp bot service: webhook verification, HMAC validation, FSM dispatcher,
 Meta API message sending, and outbound notifications.
 
-FSM states (Phase 3 + Phase 4):
-  idle / menu_principal → recibos_ver (1), licencias_tipo (2), idle (0/salir)
-  recibos_ver           → recibos_confirmar (VER + pending receipt found)
-  recibos_confirmar     → idle (CONFIRMO → registers firma)
-  licencias_tipo        → licencias_fechas (user selects license type)
-  licencias_fechas      → licencias_confirmar (user provides dates)
-  licencias_confirmar   → idle (CONFIRMO → creates solicitud)
-  licencias_saldo       → idle (shows balance, returns to menu)
+FSM states (Phase 3 + Phase 4 + Phase 5):
+  idle / menu_principal    → recibos_ver (1), licencias_tipo (2), comunicaciones_ver (3), idle (0/salir)
+  recibos_ver              → recibos_confirmar (VER + pending receipt found)
+  recibos_confirmar        → idle (CONFIRMO → registers firma)
+  licencias_tipo           → licencias_fechas (user selects license type)
+  licencias_fechas         → licencias_confirmar (user provides dates)
+  licencias_confirmar      → idle (CONFIRMO → creates solicitud)
+  licencias_saldo          → idle (shows balance, returns to menu)
+  comunicaciones_ver       → comunicaciones_confirmar (if requiere_confirmacion)
+  comunicaciones_confirmar → idle (LEÍDO → marks confirmado)
 """
 import hashlib
 import hmac
@@ -22,6 +24,8 @@ from fastapi import HTTPException, status
 from supabase._async.client import AsyncClient
 
 from app.core.config import Settings
+from app.repositories.comunicacion_destinatario_repository import ComunicacionDestinatarioRepository
+from app.repositories.comunicacion_repository import ComunicacionRepository
 from app.repositories.recibo_repository import ReciboRepository
 from app.repositories.saldo_licencia_repository import SaldoLicenciaRepository
 from app.repositories.solicitud_licencia_repository import SolicitudLicenciaRepository
@@ -39,12 +43,14 @@ logger = logging.getLogger(__name__)
 
 # ── Text normalisation ────────────────────────────────────────────────────────
 
-_KEYWORDS_VER       = {"ver", "veer", "vel"}
-_KEYWORDS_CONFIRMO  = {"confirmo", "confirme", "confermo", "si", "sí"}
-_KEYWORDS_SALIR     = {"salir", "cancelar", "cancel", "menu", "menú", "0"}
-_KEYWORDS_RECIBOS   = {"1", "recibo", "recibos", "sueldo", "recibir"}
-_KEYWORDS_LICENCIAS = {"2", "licencia", "licencias", "vacacion", "vacaciones", "permiso"}
-_KEYWORDS_SALDO     = {"saldo", "dias", "días", "balance", "disponible"}
+_KEYWORDS_VER           = {"ver", "veer", "vel"}
+_KEYWORDS_CONFIRMO      = {"confirmo", "confirme", "confermo", "si", "sí"}
+_KEYWORDS_LEIDO         = {"leido", "leído", "lei", "confirmo", "confirme", "si", "sí"}
+_KEYWORDS_SALIR         = {"salir", "cancelar", "cancel", "menu", "menú", "0"}
+_KEYWORDS_RECIBOS       = {"1", "recibo", "recibos", "sueldo", "recibir"}
+_KEYWORDS_LICENCIAS     = {"2", "licencia", "licencias", "vacacion", "vacaciones", "permiso"}
+_KEYWORDS_COMUNICACIONES = {"3", "comunicacion", "comunicaciones", "aviso", "avisos", "notificacion"}
+_KEYWORDS_SALDO         = {"saldo", "dias", "días", "balance", "disponible"}
 
 
 def _normalize(text: str | None) -> str:
@@ -68,6 +74,7 @@ _MENU = (
     "📋 *Menú principal*\n\n"
     "1️⃣ Recibos de sueldo\n"
     "2️⃣ Licencias\n"
+    "3️⃣ Comunicaciones\n"
     "0️⃣ Salir\n\n"
     "_Respondé el número de la opción._"
 )
@@ -92,6 +99,8 @@ class WhatsappService:
         tipo_licencia_repo: TipoLicenciaRepository | None = None,
         solicitud_repo: SolicitudLicenciaRepository | None = None,
         saldo_repo: SaldoLicenciaRepository | None = None,
+        comunicacion_repo: ComunicacionRepository | None = None,
+        comunicacion_dest_repo: ComunicacionDestinatarioRepository | None = None,
     ) -> None:
         self._db = db
         self._settings = settings
@@ -103,6 +112,8 @@ class WhatsappService:
         self._tipos_licencia = tipo_licencia_repo
         self._solicitudes = solicitud_repo
         self._saldos = saldo_repo
+        self._comunicaciones = comunicacion_repo
+        self._com_destinatarios = comunicacion_dest_repo
 
     # ── Config management ─────────────────────────────────────────────────────
 
@@ -264,6 +275,8 @@ class WhatsappService:
                 await self._enter_recibos_ver(user_id, tenant_id, msg.wa_id, contexto, client)
             elif kw in _KEYWORDS_LICENCIAS:
                 await self._enter_licencias_tipo(user_id, tenant_id, msg.wa_id, client)
+            elif kw in _KEYWORDS_COMUNICACIONES:
+                await self._enter_comunicaciones_ver(user_id, tenant_id, msg.wa_id, client)
             elif kw in _KEYWORDS_SALDO:
                 await self._show_licencias_saldo(user_id, tenant_id, msg.wa_id, client)
             elif kw in _KEYWORDS_SALIR and state == "menu_principal":
@@ -318,6 +331,26 @@ class WhatsappService:
 
         elif state == "licencias_saldo":
             await self._show_licencias_saldo(user_id, tenant_id, msg.wa_id, client)
+
+        elif state == "comunicaciones_ver":
+            if kw in _KEYWORDS_SALIR:
+                await self._sessions.upsert(tenant_id, user_id, "menu_principal", {})
+                await self._send_text(client, msg.wa_id, _MENU)
+                await self._log_outbound(tenant_id, user_id, "text", _MENU)
+            else:
+                await self._enter_comunicaciones_ver(user_id, tenant_id, msg.wa_id, client)
+
+        elif state == "comunicaciones_confirmar":
+            if kw in _KEYWORDS_LEIDO:
+                await self._confirm_comunicacion(user_id, tenant_id, msg.wa_id, contexto, client)
+            elif kw in _KEYWORDS_SALIR:
+                await self._sessions.upsert(tenant_id, user_id, "menu_principal", {})
+                await self._send_text(client, msg.wa_id, _MENU)
+                await self._log_outbound(tenant_id, user_id, "text", _MENU)
+            else:
+                hint = "Respondé *LEÍDO* para confirmar la lectura o *SALIR* para volver al menú."
+                await self._send_text(client, msg.wa_id, hint)
+                await self._log_outbound(tenant_id, user_id, "text", hint)
 
         else:
             # Unknown/unsupported state — reset to menu
@@ -593,6 +626,75 @@ class WhatsappService:
         await self._recibos.update_estado(recibo_id, "firmado")
 
         ok_text = "✅ Recibo firmado correctamente. ¡Gracias!"
+        await self._send_text(client, wa_id, ok_text)
+        await self._log_outbound(tenant_id, user_id, "text", ok_text)
+        await self._sessions.reset(tenant_id, user_id)
+
+    # ── Comunicaciones FSM ────────────────────────────────────────────────────
+
+    async def _enter_comunicaciones_ver(
+        self,
+        user_id: str,
+        tenant_id: str,
+        wa_id: str,
+        client: MetaApiClient,
+    ) -> None:
+        if not self._com_destinatarios:
+            await self._send_text(client, wa_id, "Módulo de comunicaciones no disponible.")
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        rows, total = await self._com_destinatarios.list_by_user(
+            user_id, estado_filter="no_leidas", offset=0, limit=5
+        )
+        if not rows:
+            msg_text = "No tenés comunicaciones pendientes de lectura 📭"
+            await self._send_text(client, wa_id, msg_text)
+            await self._log_outbound(tenant_id, user_id, "text", msg_text)
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        dest = rows[0]
+        com = dest.get("comunicaciones") or {}
+        com_id = str(com.get("id", ""))
+        asunto = com.get("asunto", "")
+        cuerpo = com.get("cuerpo", "")
+        requiere = com.get("requiere_confirmacion", False)
+
+        await self._com_destinatarios.mark_leido(com_id, user_id)
+
+        texto = f"📢 *{asunto}*\n\n{cuerpo}"
+        if total > 1:
+            texto += f"\n\n_({total - 1} comunicaciones más pendientes)_"
+
+        if requiere:
+            texto += "\n\nRespondé *LEÍDO* para confirmar la lectura."
+            await self._sessions.upsert(
+                tenant_id, user_id, "comunicaciones_confirmar", {"comunicacion_id": com_id}
+            )
+        else:
+            await self._sessions.reset(tenant_id, user_id)
+
+        await self._send_text(client, wa_id, texto)
+        await self._log_outbound(tenant_id, user_id, "text", texto)
+
+    async def _confirm_comunicacion(
+        self,
+        user_id: str,
+        tenant_id: str,
+        wa_id: str,
+        contexto: dict,
+        client: MetaApiClient,
+    ) -> None:
+        com_id = contexto.get("comunicacion_id")
+        if not com_id or not self._com_destinatarios:
+            await self._send_text(client, wa_id, _UNKNOWN)
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        await self._com_destinatarios.mark_confirmado(com_id, user_id)
+
+        ok_text = "✅ Confirmación registrada. ¡Gracias!"
         await self._send_text(client, wa_id, ok_text)
         await self._log_outbound(tenant_id, user_id, "text", ok_text)
         await self._sessions.reset(tenant_id, user_id)
