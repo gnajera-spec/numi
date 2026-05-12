@@ -29,21 +29,22 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-[FASE 5] — Comunicaciones institucionales
+[FASE 7] — Servicio Médico
 Estado: COMPLETADA
 Última actualización: 2026-05-12
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada — fases 1, 2, 3, 4 y 5 completadas.
+Nada — fases 1–7 completadas.
 ```
 
 ### Próximo paso concreto
 ```
-Fase 6: Portal Web del colaborador
-- Frontend React: login, recibos, licencias, comunicaciones
-- Rutas protegidas, design system, apiClient
+Fase 8: Reportes + Dashboard RRHH
+- Dashboard con KPIs del tenant (headcount, ausentismo, vencimientos)
+- Exportaciones CSV/Excel por módulo
+- Gráficos de tendencias
 ```
 
 ### Bloqueantes activos
@@ -51,6 +52,18 @@ Fase 6: Portal Web del colaborador
 - Para activar WA en prod: configurar META_VERIFY_TOKEN + META_APP_SECRET en Render
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
 - supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql (comunicaciones ya aplicada)
+- ALLOWED_ORIGINS debe incluir el puerto real del frontend al correr en local (5173 o 5174 según disponibilidad)
+```
+
+### Fixes aplicados en esta sesión
+```
+- Bug crítico: app/db/supabase.py — create_client (AsyncClient) no se awaiteaba.
+  lru_cache sincrónico devolvía la coroutine en lugar del cliente.
+  Fix: singleton global con await en get_supabase().
+- CORS: ALLOWED_ORIGINS en .env actualizado a ["http://localhost:5173","http://localhost:5174"]
+- Nota: uvicorn --reload NO detecta cambios en .env — reiniciar manualmente si se cambia.
+- seed_demo.py creado en backend/ para seed de datos de prueba (tenant + usuarios demo).
+  Credenciales: colab@demo.com / Colab1234 | admin@demo.com / Admin1234
 ```
 
 ---
@@ -65,8 +78,8 @@ Fase 6: Portal Web del colaborador
 | Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ✅ Completada | 2026-05-12 |
 | Fase 4 | Licencias + Aprobación RRHH | ✅ Completada | 2026-05-12 |
 | Fase 5 | Comunicaciones institucionales | ✅ Completada | 2026-05-12 |
-| Fase 6 | Portal Web del colaborador | ⏳ Pendiente | — |
-| Fase 7 | Servicio Médico | ⏳ Pendiente | — |
+| Fase 6 | Portal Web del colaborador | ✅ Completada | 2026-05-12 |
+| Fase 7 | Servicio Médico | ✅ Completada | 2026-05-12 |
 | Fase 8 | Reportes + Dashboard RRHH | ⏳ Pendiente | — |
 
 ---
@@ -157,6 +170,34 @@ Fase 6: Portal Web del colaborador
 5. Si aprobada: saldo_licencias se actualiza automáticamente
 ```
 
+### Frontend — Portal Web (Fase 6)
+```
+frontend/src/
+  types/index.ts                  ✅ Tipos TS para todos los módulos
+  lib/apiClient.ts                ✅ Cliente base (interceptores 401/403)
+  contexts/AuthContext.tsx        ✅ Auth state + login/logout/refreshUser
+  components/
+    ProtectedRoute.tsx            ✅ Redirect a /employee/login si no auth
+    Layout.tsx                    ✅ Header + nav desktop (tabs) + nav mobile (bottom bar)
+    Button.tsx                    ✅ primary / secondary / destructive + loading state
+    EmptyState.tsx                ✅ Ícono + título + subtítulo + CTA opcional
+    ErrorBanner.tsx               ✅ Banner rojo + botón Reintentar
+    Spinner.tsx                   ✅ Spinner animado
+  services/
+    authService.ts                ✅ login, activate, refresh, logout, me
+    recibosService.ts             ✅ list, get (signed URL), firmar
+    licenciasService.ts           ✅ tipos, mis-solicitudes, saldo, crear, cancelar, subirDocumento
+    comunicacionesService.ts      ✅ list, confirmar
+  pages/
+    LoginPage.tsx                 ✅ /employee/login
+    ActivatePage.tsx              ✅ /employee/activate?token=...
+    DashboardPage.tsx             ✅ /employee/dashboard — accesos directos + badge pendientes
+    ReceiptsPage.tsx              ✅ /employee/receipts — lista + descarga + modal firma
+    LeavesPage.tsx                ✅ /employee/leaves — saldo + historial + modal nueva solicitud
+    CommunicationsPage.tsx        ✅ /employee/communications — lista + filtros + modal detalle/confirmación
+    ProfilePage.tsx               ✅ /employee/profile — datos + cambio de contraseña
+```
+
 ### Módulos del backend — estado de implementación
 ```
 app/routers/
@@ -167,7 +208,7 @@ app/routers/
   licencias.py     ✅ tipos, políticas, solicitudes (CRUD + aprobar/rechazar/cancelar), saldo
   tenants.py       ⏳ CRUD tenants (super_admin) — pendiente
   comunicaciones.py ✅ POST /comunicaciones, GET /comunicaciones, GET /{id}, POST /{id}/adjuntos, POST /{id}/enviar, POST /{id}/reenviar, GET /colaborador, POST /{id}/confirmar
-  medico.py        ⏳ Pendiente (Fase 7)
+  medico.py        ✅ GET /medico/fichas, GET|PUT /medico/fichas/{user_id}, GET|POST /medico/examenes/{user_id}, GET|POST /medico/vacunaciones/{user_id}, GET|POST /medico/aptitudes/{user_id}, GET|POST /medico/accidentes, PATCH /medico/accidentes/{id}, GET /medico/reportes/absentismo, GET /medico/reportes/aptitudes-por-vencer
 ```
 
 ### Repositorios implementados
@@ -188,6 +229,11 @@ app/repositories/
   comunicacion_repository.py               ✅ create, get, list_by_tenant, update_estado, set_enviado, mark_enviado_completo
   comunicacion_destinatario_repository.py  ✅ bulk_create, list_by_comunicacion, list_by_user, get_for_user, mark_leido/confirmado, get_metricas
   comunicacion_adjunto_repository.py       ✅ create, list_by_comunicacion, upload_and_create
+  ficha_medica_repository.py               ✅ get, upsert (AES-256), list_with_users
+  examen_medico_repository.py              ✅ create, list_by_user, update_storage_path
+  vacunacion_repository.py                 ✅ create, list_by_user
+  aptitud_laboral_repository.py            ✅ create, list_by_user, list_por_vencer
+  accidente_trabajo_repository.py          ✅ create, get, list_by_tenant, update
 ```
 
 ### Variables de entorno requeridas
@@ -217,9 +263,10 @@ META_APP_SECRET=               # App Secret de Meta para validar firma HMAC-SHA2
                                            documentos_solicitud, seed 10 tipos
 20260512210000_add_comunicaciones_schema.sql — comunicaciones, comunicacion_destinatarios,
                                                comunicacion_adjuntos, storage bucket 'comunicaciones'
+20260512220000_add_medico_schema.sql         — fichas_medicas, examenes_medicos, vacunaciones,
+                                               aptitudes_laborales, accidentes_trabajo,
+                                               documentos_medicos, storage bucket 'documentos-medicos'
 ```
-
-> **Pendiente aplicar en Supabase remoto:** `supabase db push` con las migraciones de licencias y comunicaciones
 
 ### Storage Supabase
 ```
@@ -242,6 +289,70 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 ---
 
 ## LOG DE SESIONES
+
+### 2026-05-12 — Sesión 8
+**Duración aproximada:** 1 hora
+**Objetivo de la sesión:** Fase 7 — Servicio Médico
+
+**Completado:**
+- Migración: `fichas_medicas`, `examenes_medicos`, `vacunaciones`, `aptitudes_laborales`, `accidentes_trabajo`, `documentos_medicos` + storage bucket `documentos-medicos`
+- Triggers `updated_at` para `fichas_medicas` y `accidentes_trabajo`
+- 5 repositorios: `ficha_medica_repository`, `examen_medico_repository`, `vacunacion_repository`, `aptitud_laboral_repository`, `accidente_trabajo_repository`
+- `app/schemas/medico.py` — todos los schemas del módulo
+- `app/services/medico_service.py` — fichas (AES-256 en campos), exámenes (resultado encriptado + upload a storage), vacunaciones, aptitudes (validación restricciones), accidentes + reportes absentismo y aptitudes-por-vencer
+- `app/routers/medico.py` — 13 endpoints registrados bajo `/medico`
+- `main.py` actualizado con medico router
+- 24 tests nuevos (16 service + 8 router), 131 totales pasando
+- Migración aplicada en Supabase remoto
+
+**Arquitectura de seguridad del módulo médico:**
+- `alergias` y `condiciones` en fichas: JSON encriptado AES-256-GCM via `ENCRYPTION_KEY`
+- `resultado` en exámenes: texto encriptado AES-256-GCM
+- Acceso exclusivo: `servicio_medico`, `admin_empresa`, `super_admin` — RRHH bloqueado
+- Signed URLs documentos: 6h (más restrictivo que recibos 24h)
+
+**Commits realizados:** Pendiente
+
+**Estado al cerrar:** Fase 7 completa. 131 tests pasando. Migración aplicada. Próximo: Fase 8 Reportes + Dashboard RRHH.
+
+---
+
+### 2026-05-12 — Sesión 7
+**Duración aproximada:** 1 hora
+**Objetivo de la sesión:** Fase 6 — Portal Web del colaborador
+
+**Completado:**
+- Instalación: `react-router-dom` + `lucide-react`
+- Tailwind v4 tokens en `index.css` (`@theme`) — colores de marca, estado, superficie, contenido
+- `src/types/index.ts` — tipos para auth, recibos, licencias, comunicaciones
+- `src/services/` — authService, recibosService, licenciasService, comunicacionesService
+- `src/contexts/AuthContext.tsx` — estado global de auth + login/logout/refreshUser
+- `src/components/` — ProtectedRoute, Layout, Button, EmptyState, ErrorBanner, Spinner
+- `src/pages/` — LoginPage, ActivatePage, DashboardPage, ReceiptsPage, LeavesPage, CommunicationsPage, ProfilePage
+- `App.tsx` — routing con react-router-dom (BrowserRouter + nested routes)
+- Fix `apiClient.ts` redirect 401 → `/employee/login`
+- Build TypeScript exitoso sin errores (tsc + vite build)
+
+**Rutas implementadas:**
+- `/employee/login` — login con email/contraseña
+- `/employee/activate?token=...` — activación de cuenta
+- `/employee/dashboard` — dashboard con badges pendientes
+- `/employee/receipts` — recibos + modal firma electrónica
+- `/employee/leaves` — licencias + saldo + modal nueva solicitud
+- `/employee/communications` — comunicados + filtros + modal confirmación
+- `/employee/profile` — datos personales + cambio contraseña
+
+**Fixes adicionales en sesión:**
+- `app/db/supabase.py` — bug crítico: `create_client` async no se awaiteaba (lru_cache sincrónico). Fix: singleton global con await.
+- `backend/.env` — ALLOWED_ORIGINS ampliado a `["http://localhost:5173","http://localhost:5174"]`
+- `backend/seed_demo.py` — script de seed para tenant + usuarios demo (no commitear, contiene service_role_key hardcodeada)
+- Nota documentada: uvicorn `--reload` no detecta cambios en `.env`, requiere reinicio manual.
+
+**Commits realizados:** Pendiente
+
+**Estado al cerrar:** Fase 6 completa y probada localmente. Backend corriendo en :8000, frontend en :5174. Login funcional. Próximo: Fase 7 Servicio Médico.
+
+---
 
 ### 2026-05-12 — Sesión 6
 **Duración aproximada:** 1 hora
