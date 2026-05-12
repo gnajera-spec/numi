@@ -2,18 +2,19 @@
 WhatsApp bot service: webhook verification, HMAC validation, FSM dispatcher,
 Meta API message sending, and outbound notifications.
 
-FSM states implemented in Phase 3:
-  idle            → menu_principal (any message)
-  menu_principal  → recibos_ver (1/recibos/ver), idle (0/salir)
-  recibos_ver     → recibos_confirmar (VER + pending receipt found)
-  recibos_confirmar → idle (CONFIRMO → registers firma)
-
-All other states: reply with menu hint.
+FSM states (Phase 3 + Phase 4):
+  idle / menu_principal → recibos_ver (1), licencias_tipo (2), idle (0/salir)
+  recibos_ver           → recibos_confirmar (VER + pending receipt found)
+  recibos_confirmar     → idle (CONFIRMO → registers firma)
+  licencias_tipo        → licencias_fechas (user selects license type)
+  licencias_fechas      → licencias_confirmar (user provides dates)
+  licencias_confirmar   → idle (CONFIRMO → creates solicitud)
+  licencias_saldo       → idle (shows balance, returns to menu)
 """
 import hashlib
 import hmac
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 import httpx
@@ -22,11 +23,15 @@ from supabase._async.client import AsyncClient
 
 from app.core.config import Settings
 from app.repositories.recibo_repository import ReciboRepository
+from app.repositories.saldo_licencia_repository import SaldoLicenciaRepository
+from app.repositories.solicitud_licencia_repository import SolicitudLicenciaRepository
+from app.repositories.tipo_licencia_repository import TipoLicenciaRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.repositories.whatsapp_log_repository import WhatsappLogRepository
 from app.repositories.whatsapp_session_repository import WhatsappSessionRepository
 from app.schemas.whatsapp import InboundMessage, WhatsappConfigOut, WhatsappConfigUpdate
+from app.services.licencia_service import LicenciaService, _calc_dias_habiles
 from app.services.meta_api import MetaApiClient
 from app.utils.encryption import decrypt, encrypt
 
@@ -34,13 +39,27 @@ logger = logging.getLogger(__name__)
 
 # ── Text normalisation ────────────────────────────────────────────────────────
 
-_KEYWORDS_VER      = {"ver", "veer", "vel"}
-_KEYWORDS_CONFIRMO = {"confirmo", "confirme", "confermo", "si", "sí"}
-_KEYWORDS_SALIR    = {"salir", "cancelar", "cancel", "menu", "menú", "0"}
-_KEYWORDS_RECIBOS  = {"1", "recibo", "recibos", "sueldo", "recibir"}
+_KEYWORDS_VER       = {"ver", "veer", "vel"}
+_KEYWORDS_CONFIRMO  = {"confirmo", "confirme", "confermo", "si", "sí"}
+_KEYWORDS_SALIR     = {"salir", "cancelar", "cancel", "menu", "menú", "0"}
+_KEYWORDS_RECIBOS   = {"1", "recibo", "recibos", "sueldo", "recibir"}
+_KEYWORDS_LICENCIAS = {"2", "licencia", "licencias", "vacacion", "vacaciones", "permiso"}
+_KEYWORDS_SALDO     = {"saldo", "dias", "días", "balance", "disponible"}
+
 
 def _normalize(text: str | None) -> str:
     return (text or "").strip().lower()
+
+
+def _parse_date(text: str) -> date | None:
+    """Parse DD/MM/YYYY or YYYY-MM-DD date strings."""
+    text = text.strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 # ── Menu text helpers ─────────────────────────────────────────────────────────
@@ -48,6 +67,7 @@ def _normalize(text: str | None) -> str:
 _MENU = (
     "📋 *Menú principal*\n\n"
     "1️⃣ Recibos de sueldo\n"
+    "2️⃣ Licencias\n"
     "0️⃣ Salir\n\n"
     "_Respondé el número de la opción._"
 )
@@ -69,6 +89,9 @@ class WhatsappService:
         log_repo: WhatsappLogRepository,
         user_repo: UserRepository,
         recibo_repo: ReciboRepository,
+        tipo_licencia_repo: TipoLicenciaRepository | None = None,
+        solicitud_repo: SolicitudLicenciaRepository | None = None,
+        saldo_repo: SaldoLicenciaRepository | None = None,
     ) -> None:
         self._db = db
         self._settings = settings
@@ -77,6 +100,9 @@ class WhatsappService:
         self._logs = log_repo
         self._users = user_repo
         self._recibos = recibo_repo
+        self._tipos_licencia = tipo_licencia_repo
+        self._solicitudes = solicitud_repo
+        self._saldos = saldo_repo
 
     # ── Config management ─────────────────────────────────────────────────────
 
@@ -236,6 +262,10 @@ class WhatsappService:
         if state == "idle" or state == "menu_principal":
             if kw in _KEYWORDS_RECIBOS or kw in _KEYWORDS_VER:
                 await self._enter_recibos_ver(user_id, tenant_id, msg.wa_id, contexto, client)
+            elif kw in _KEYWORDS_LICENCIAS:
+                await self._enter_licencias_tipo(user_id, tenant_id, msg.wa_id, client)
+            elif kw in _KEYWORDS_SALDO:
+                await self._show_licencias_saldo(user_id, tenant_id, msg.wa_id, client)
             elif kw in _KEYWORDS_SALIR and state == "menu_principal":
                 await self._sessions.reset(tenant_id, user_id)
                 await self._send_text(client, msg.wa_id, "Hasta luego 👋")
@@ -268,11 +298,219 @@ class WhatsappService:
                 await self._send_text(client, msg.wa_id, hint)
                 await self._log_outbound(tenant_id, user_id, "text", hint)
 
+        elif state == "licencias_tipo":
+            await self._handle_licencias_tipo(user_id, tenant_id, msg.wa_id, contexto, kw, client)
+
+        elif state == "licencias_fechas":
+            await self._handle_licencias_fechas(user_id, tenant_id, msg.wa_id, contexto, msg.body or "", client)
+
+        elif state == "licencias_confirmar":
+            if kw in _KEYWORDS_CONFIRMO:
+                await self._confirm_licencia(user_id, tenant_id, msg.wa_id, contexto, client)
+            elif kw in _KEYWORDS_SALIR:
+                await self._sessions.reset(tenant_id, user_id)
+                await self._send_text(client, msg.wa_id, "Solicitud cancelada. " + _MENU)
+                await self._log_outbound(tenant_id, user_id, "text", "Solicitud cancelada.")
+            else:
+                hint = "Respondé *CONFIRMO* para enviar la solicitud o *CANCELAR* para anular."
+                await self._send_text(client, msg.wa_id, hint)
+                await self._log_outbound(tenant_id, user_id, "text", hint)
+
+        elif state == "licencias_saldo":
+            await self._show_licencias_saldo(user_id, tenant_id, msg.wa_id, client)
+
         else:
             # Unknown/unsupported state — reset to menu
             await self._sessions.upsert(tenant_id, user_id, "menu_principal", {})
             await self._send_text(client, msg.wa_id, _MENU)
             await self._log_outbound(tenant_id, user_id, "text", _MENU)
+
+    # ── Licencias FSM ─────────────────────────────────────────────────────────
+
+    async def _enter_licencias_tipo(
+        self, user_id: str, tenant_id: str, wa_id: str, client: MetaApiClient
+    ) -> None:
+        if not self._tipos_licencia:
+            await self._send_text(client, wa_id, "Módulo de licencias no disponible aún.")
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        tipos = await self._tipos_licencia.list(tenant_id)
+        if not tipos:
+            await self._send_text(client, wa_id, "No hay tipos de licencia configurados.")
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        lines = ["📋 *Tipos de licencia*\n"]
+        for i, t in enumerate(tipos[:8], 1):
+            cert = " 📄" if t.get("requiere_certificado") else ""
+            lines.append(f"{i}️⃣ {t['nombre']}{cert}")
+        lines.append("\n_Respondé el número del tipo o *CANCELAR* para volver._")
+
+        text = "\n".join(lines)
+        ctx = {"tipos": [{"id": str(t["id"]), "nombre": t["nombre"], "requiere_certificado": t.get("requiere_certificado", False)} for t in tipos[:8]]}
+        await self._sessions.upsert(tenant_id, user_id, "licencias_tipo", ctx)
+        await self._send_text(client, wa_id, text)
+        await self._log_outbound(tenant_id, user_id, "text", text)
+
+    async def _handle_licencias_tipo(
+        self, user_id: str, tenant_id: str, wa_id: str, contexto: dict, kw: str, client: MetaApiClient
+    ) -> None:
+        if kw in _KEYWORDS_SALIR:
+            await self._sessions.upsert(tenant_id, user_id, "menu_principal", {})
+            await self._send_text(client, wa_id, _MENU)
+            return
+
+        tipos = contexto.get("tipos", [])
+        try:
+            idx = int(kw) - 1
+            if idx < 0 or idx >= len(tipos):
+                raise ValueError
+        except (ValueError, TypeError):
+            hint = f"Respondé un número del 1 al {len(tipos)} para seleccionar el tipo."
+            await self._send_text(client, wa_id, hint)
+            return
+
+        tipo = tipos[idx]
+        new_ctx = {
+            "tipos": tipos,
+            "tipo_licencia_id": tipo["id"],
+            "tipo_licencia_nombre": tipo["nombre"],
+            "requiere_certificado": tipo.get("requiere_certificado", False),
+        }
+        await self._sessions.upsert(tenant_id, user_id, "licencias_fechas", new_ctx)
+
+        ask = (
+            f"Seleccionaste: *{tipo['nombre']}*\n\n"
+            "¿Cuáles son las fechas?\n"
+            "Ingresá *inicio* y *fin* en formato DD/MM/YYYY separadas por un espacio o guion.\n"
+            "_Ej: 15/06/2026 20/06/2026_\n\n"
+            "Respondé *CANCELAR* para volver."
+        )
+        await self._send_text(client, wa_id, ask)
+        await self._log_outbound(tenant_id, user_id, "text", ask)
+
+    async def _handle_licencias_fechas(
+        self, user_id: str, tenant_id: str, wa_id: str, contexto: dict, raw: str, client: MetaApiClient
+    ) -> None:
+        if _normalize(raw) in _KEYWORDS_SALIR:
+            await self._sessions.upsert(tenant_id, user_id, "menu_principal", {})
+            await self._send_text(client, wa_id, _MENU)
+            return
+
+        parts = raw.replace(" - ", " ").replace("-", " ").split()
+        fecha_inicio = _parse_date(parts[0]) if len(parts) >= 1 else None
+        fecha_fin = _parse_date(parts[1]) if len(parts) >= 2 else fecha_inicio
+
+        if not fecha_inicio or not fecha_fin:
+            hint = "No entendí las fechas. Ingresalas como DD/MM/YYYY DD/MM/YYYY (ej: 15/06/2026 20/06/2026)."
+            await self._send_text(client, wa_id, hint)
+            return
+
+        if fecha_fin < fecha_inicio:
+            await self._send_text(client, wa_id, "La fecha de fin no puede ser anterior a la de inicio.")
+            return
+
+        dias = _calc_dias_habiles(fecha_inicio, fecha_fin)
+        tipo_nombre = contexto.get("tipo_licencia_nombre", "")
+
+        new_ctx = {**contexto, "fecha_inicio": str(fecha_inicio), "fecha_fin": str(fecha_fin), "dias_habiles": dias}
+        await self._sessions.upsert(tenant_id, user_id, "licencias_confirmar", new_ctx)
+
+        summary = (
+            f"📋 *Resumen de solicitud*\n\n"
+            f"Tipo: {tipo_nombre}\n"
+            f"Desde: {fecha_inicio.strftime('%d/%m/%Y')}\n"
+            f"Hasta: {fecha_fin.strftime('%d/%m/%Y')}\n"
+            f"Días hábiles: {dias}\n\n"
+            "Respondé *CONFIRMO* para enviar la solicitud o *CANCELAR* para anular."
+        )
+        await self._send_text(client, wa_id, summary)
+        await self._log_outbound(tenant_id, user_id, "text", summary)
+
+    async def _confirm_licencia(
+        self, user_id: str, tenant_id: str, wa_id: str, contexto: dict, client: MetaApiClient
+    ) -> None:
+        if not self._solicitudes:
+            await self._send_text(client, wa_id, "No se pudo crear la solicitud.")
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        tipo_id = contexto.get("tipo_licencia_id")
+        fecha_inicio_str = contexto.get("fecha_inicio")
+        fecha_fin_str = contexto.get("fecha_fin")
+
+        if not tipo_id or not fecha_inicio_str or not fecha_fin_str:
+            await self._send_text(client, wa_id, "Sesión expirada. Iniciá el proceso de nuevo.")
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        try:
+            fecha_inicio = date.fromisoformat(fecha_inicio_str)
+            fecha_fin = date.fromisoformat(fecha_fin_str)
+            dias = _calc_dias_habiles(fecha_inicio, fecha_fin)
+
+            row = await self._solicitudes.create({
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "tipo_licencia_id": tipo_id,
+                "fecha_inicio": fecha_inicio,
+                "fecha_fin": fecha_fin,
+                "dias_habiles": dias,
+                "estado": "pendiente",
+                "canal": "whatsapp",
+            })
+
+            if self._saldos:
+                await self._saldos.add_pendientes(tenant_id, user_id, tipo_id, fecha_inicio.year, dias)
+
+            numero = row.get("numero_solicitud", "")
+            ok_text = (
+                f"✅ Solicitud enviada correctamente.\n"
+                f"Número: *{numero}*\n\n"
+                "Te avisaremos cuando RRHH la revise."
+            )
+            await self._send_text(client, wa_id, ok_text)
+            await self._log_outbound(tenant_id, user_id, "text", ok_text)
+
+        except Exception as exc:
+            logger.error("Error creating licencia from bot for user %s: %s", user_id, exc)
+            await self._send_text(client, wa_id, "Ocurrió un error al crear la solicitud. Intentá de nuevo.")
+
+        await self._sessions.reset(tenant_id, user_id)
+
+    async def _show_licencias_saldo(
+        self, user_id: str, tenant_id: str, wa_id: str, client: MetaApiClient
+    ) -> None:
+        if not self._saldos:
+            await self._send_text(client, wa_id, "Consulta de saldo no disponible.")
+            await self._sessions.reset(tenant_id, user_id)
+            return
+
+        anio = datetime.now(timezone.utc).year
+        rows = await self._saldos.list_for_user(tenant_id, user_id, anio)
+
+        if not rows:
+            msg_text = f"No tenés saldos registrados para {anio}. Consultá con RRHH."
+        else:
+            lines = [f"📊 *Tu saldo de licencias {anio}*\n"]
+            for r in rows:
+                tipo = r.get("tipos_licencia") or {}
+                disponibles = r["dias_disponibles"]
+                tomados = r["dias_tomados"]
+                pendientes = r["dias_pendientes"]
+                restantes = max(0, disponibles - tomados - pendientes)
+                lines.append(
+                    f"▸ {tipo.get('nombre', r['tipo_licencia_id'])}: "
+                    f"{restantes} disponibles ({tomados} tomados, {pendientes} pendientes)"
+                )
+            msg_text = "\n".join(lines)
+
+        await self._send_text(client, wa_id, msg_text)
+        await self._log_outbound(tenant_id, user_id, "text", msg_text)
+        await self._sessions.reset(tenant_id, user_id)
+
+    # ── Recibos FSM ───────────────────────────────────────────────────────────
 
     async def _enter_recibos_ver(
         self,

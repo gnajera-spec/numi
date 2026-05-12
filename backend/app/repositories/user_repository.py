@@ -115,6 +115,8 @@ class UserRepository:
             payload["whatsapp_numero_masked"] = data["whatsapp_numero_masked"]
         if data.get("whatsapp_id_hash"):
             payload["whatsapp_id_hash"] = data["whatsapp_id_hash"]
+        if data.get("whatsapp_id_encrypted"):
+            payload["whatsapp_id_encrypted"] = data["whatsapp_id_encrypted"]
         if created_by:
             payload["created_by"] = str(created_by)
 

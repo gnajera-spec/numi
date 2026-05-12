@@ -47,10 +47,12 @@ class UserService:
         user_repo: UserRepository,
         token_repo: TokenRepository,
         colaborador_repo: ColaboradorRepository,
+        encryption_key: str | None = None,
     ) -> None:
         self._users = user_repo
         self._tokens = token_repo
         self._colaboradores = colaborador_repo
+        self._encryption_key = encryption_key
 
     # ── List ─────────────────────────────────────────────────────
 
@@ -97,17 +99,27 @@ class UserService:
             raise HTTPException(status.HTTP_409_CONFLICT, "El CUIL ya está registrado en este tenant")
 
         masked = _mask_whatsapp(data.whatsapp_numero)
+        # wa_id is the phone number in E.164 format without the leading '+'
+        wa_id = data.whatsapp_numero.lstrip("+")
+        wa_hash = hashlib.sha256(wa_id.encode()).hexdigest()
+
+        user_data: dict = {
+            "email": str(data.email),
+            "first_name": data.first_name,
+            "last_name": data.last_name,
+            "cuil": data.cuil,
+            "role": data.role,
+            "whatsapp_numero_masked": masked,
+            "whatsapp_id_hash": wa_hash,
+        }
+
+        if self._encryption_key:
+            from app.utils.encryption import encrypt
+            user_data["whatsapp_id_encrypted"] = encrypt(wa_id, self._encryption_key)
 
         user = await self._users.create(
             tenant_id,
-            {
-                "email": str(data.email),
-                "first_name": data.first_name,
-                "last_name": data.last_name,
-                "cuil": data.cuil,
-                "role": data.role,
-                "whatsapp_numero_masked": masked,
-            },
+            user_data,
             created_by=created_by_id,
         )
 

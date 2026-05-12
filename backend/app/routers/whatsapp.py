@@ -8,6 +8,9 @@ from app.core.config import Settings, get_settings
 from app.db.supabase import get_supabase
 from app.dependencies.auth import require_role
 from app.repositories.recibo_repository import ReciboRepository
+from app.repositories.saldo_licencia_repository import SaldoLicenciaRepository
+from app.repositories.solicitud_licencia_repository import SolicitudLicenciaRepository
+from app.repositories.tipo_licencia_repository import TipoLicenciaRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.repositories.whatsapp_log_repository import WhatsappLogRepository
@@ -30,6 +33,9 @@ def _svc(
         log_repo=WhatsappLogRepository(db),
         user_repo=UserRepository(db),
         recibo_repo=ReciboRepository(db),
+        tipo_licencia_repo=TipoLicenciaRepository(db),
+        solicitud_repo=SolicitudLicenciaRepository(db),
+        saldo_repo=SaldoLicenciaRepository(db),
     )
 
 

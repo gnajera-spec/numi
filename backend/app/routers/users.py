@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from supabase._async.client import AsyncClient
 
+from app.core.config import get_settings, Settings
 from app.db.supabase import get_supabase
 from app.dependencies.auth import get_current_user, require_role
 from app.repositories.colaborador_repository import ColaboradorRepository
@@ -23,8 +24,16 @@ from app.services.user_service import UserService
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-def _svc(db: AsyncClient = Depends(get_supabase)) -> UserService:
-    return UserService(UserRepository(db), TokenRepository(db), ColaboradorRepository(db))
+def _svc(
+    db: AsyncClient = Depends(get_supabase),
+    settings: Settings = Depends(get_settings),
+) -> UserService:
+    return UserService(
+        UserRepository(db),
+        TokenRepository(db),
+        ColaboradorRepository(db),
+        encryption_key=settings.encryption_key,
+    )
 
 
 # ── List ──────────────────────────────────────────────────────────────────────

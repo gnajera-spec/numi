@@ -29,31 +29,30 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-[FASE 3] — WhatsApp Bot
+[FASE 4] — Licencias + Aprobación RRHH
 Estado: COMPLETADA
 Última actualización: 2026-05-12
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada — fases 1, 2 y 3 completadas.
+Nada — fases 1, 2, 3 y 4 completadas.
 ```
 
 ### Próximo paso concreto
 ```
-Fase 4: Licencias + Aprobación RRHH
-- Tablas: tipos_licencia, politicas_licencia, solicitudes_licencia, saldo_licencias
-- Endpoints: GET/POST /licencias, PUT /licencias/{id}/aprobar|rechazar
-- Flujo bot: licencias_tipo → licencias_fechas → licencias_confirmar
-- Notificación WA cuando RRHH aprueba/rechaza (templates licencia_aprobada, licencia_rechazada)
+Fase 5: Comunicaciones institucionales
+- Tablas: comunicaciones, comunicacion_destinatarios, comunicacion_adjuntos
+- Endpoints: POST /comunicaciones, POST /comunicaciones/{id}/enviar, GET /comunicaciones/colaborador
+- Flujo bot: comunicaciones_ver → comunicaciones_confirmar
+- Segmentación por sede/departamento/puesto/lista_custom
 ```
 
 ### Bloqueantes activos
 ```
 - Para activar WA en prod: configurar META_VERIFY_TOKEN + META_APP_SECRET en Render
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
-- La lookup de wa_id a usuario require que los colaboradores tengan whatsapp_id_hash en DB
-  (se puebla al crear el usuario cuando WA integration está activa)
+- supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql
 ```
 
 ---
@@ -66,7 +65,7 @@ Fase 4: Licencias + Aprobación RRHH
 | Fase 1 | Auth + Multi-tenant + Roles + Usuarios | ✅ Completada | 2026-05-09 |
 | Fase 2 | Recibos de sueldo + Firma electrónica | ✅ Completada | 2026-05-09 |
 | Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ✅ Completada | 2026-05-12 |
-| Fase 4 | Licencias + Aprobación RRHH | ⏳ Pendiente | — |
+| Fase 4 | Licencias + Aprobación RRHH | ✅ Completada | 2026-05-12 |
 | Fase 5 | Comunicaciones institucionales | ⏳ Pendiente | — |
 | Fase 6 | Portal Web del colaborador | ⏳ Pendiente | — |
 | Fase 7 | Servicio Médico | ⏳ Pendiente | — |
@@ -113,7 +112,7 @@ Fase 4: Licencias + Aprobación RRHH
 | DT-004 | Reset de contraseña por email fuera de scope v1.0 | UX — flujo de recuperación manual | Baja | 2026-05-09 |
 | DT-005 | Job store de upload de recibos en `dict` en memoria — no sobrevive restart ni multi-proceso | Confiabilidad en deploy multi-worker | Alta | 2026-05-09 |
 | DT-006 | `POST /periodos/{id}/renotificar` implementado pero requiere `whatsapp_numero_raw` en usuario para enviar — pendiente de flujo de registro de wa_id | Funcionalidad parcial | Media | 2026-05-12 |
-| DT-007 | `whatsapp_id_hash` en users no se puebla aún en `create_user` — falta pasar el hash desde `user_service.create_user` cuando se recibe `whatsapp_numero` | Lookup de usuario por wa_id bloqueado | Alta | 2026-05-12 |
+| DT-007 | ~~`whatsapp_id_hash` en users no se puebla aún en `create_user`~~ | ✅ Resuelto en Fase 4 — se pueblan `whatsapp_id_hash` y `whatsapp_id_encrypted` al crear usuario | — | 2026-05-12 |
 
 ---
 
@@ -167,9 +166,9 @@ app/routers/
   users.py         ✅ CRUD + invitaciones + ciclo de vida (suspend/reactivate/baja)
   recibos.py       ✅ Períodos, upload ZIP/PDF, distribución, firma, CSV export
   whatsapp.py      ✅ GET|POST /webhook, GET|PUT /config
+  licencias.py     ✅ tipos, políticas, solicitudes (CRUD + aprobar/rechazar/cancelar), saldo
   tenants.py       ⏳ CRUD tenants (super_admin) — pendiente
   comunicaciones.py ⏳ Pendiente (Fase 5)
-  licencias.py     ⏳ Pendiente (Fase 4)
   medico.py        ⏳ Pendiente (Fase 7)
 ```
 
@@ -184,6 +183,10 @@ app/repositories/
   whatsapp_config_repository.py   ✅ CRUD config WA por tenant
   whatsapp_session_repository.py  ✅ FSM session manager (DB-based, TTL 10 min)
   whatsapp_log_repository.py      ✅ log de mensajes inbound/outbound
+  tipo_licencia_repository.py     ✅ list (globales + tenant), get, create
+  politica_licencia_repository.py ✅ list, get_for_tipo, create
+  solicitud_licencia_repository.py ✅ create, get, list_all, list_by_user, has_overlap, update_estado
+  saldo_licencia_repository.py    ✅ get, list_for_user, ensure_saldo, add/subtract_pendientes, approve
 ```
 
 ### Variables de entorno requeridas
@@ -311,6 +314,32 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 - `4f466be` — docs: update CLAUDE_GUIDE — fase 2 completada, próximo WhatsApp bot
 
 **Estado al cerrar:** Fases 1 y 2 completas. 41 tests pasando. Próximo: Fase 3 WhatsApp bot.
+
+### 2026-05-12 — Sesión 5
+**Duración aproximada:** 1.5 horas
+**Objetivo de la sesión:** Fase 4 — Licencias + Aprobación RRHH + DT-007 fix
+
+**Completado:**
+- Migración: `tipos_licencia`, `politicas_licencia`, `solicitudes_licencia` (con sequence + trigger `LIC-YYYY-NNNNN`), `saldo_licencias`, `documentos_solicitud`
+- Seed: 10 tipos de licencia globales (VAC, ENF, MAT, PAT, MAT-C, DUE, EST, ART, SGS, CUST)
+- DT-007 resuelto: `user_service.create_user` ahora puebla `whatsapp_id_hash` (SHA-256) y `whatsapp_id_encrypted` (AES-256) al crear usuario
+- `users` tabla: nueva columna `whatsapp_id_encrypted` en migración
+- 4 repositorios: `tipo_licencia_repository`, `politica_licencia_repository`, `solicitud_licencia_repository`, `saldo_licencia_repository`
+- `app/schemas/licencias.py` — todos los schemas del módulo
+- `app/services/licencia_service.py` — lógica completa + notificaciones WA best-effort
+- `app/routers/licencias.py` — 11 endpoints registrados
+- WhatsApp FSM extendido: `licencias_tipo → licencias_fechas → licencias_confirmar`, `licencias_saldo`, menú actualizado con opción 2️⃣
+- `main.py` actualizado con licencias router
+- 22 tests nuevos (13 service + 9 router), 81 totales pasando
+
+**Deuda resuelta:** DT-007
+
+**Commits realizados:**
+- Pendiente de commit
+
+**Estado al cerrar:** Fase 4 completa. 81 tests pasando. Próximo: Fase 5 Comunicaciones.
+
+---
 
 ### 2026-05-12 — Sesión 4
 **Duración aproximada:** 1.5 horas
