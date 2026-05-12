@@ -50,7 +50,7 @@ Fase 6: Portal Web del colaborador
 ```
 - Para activar WA en prod: configurar META_VERIFY_TOKEN + META_APP_SECRET en Render
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
-- supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql
+- supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql (comunicaciones ya aplicada)
 ```
 
 ---
@@ -259,9 +259,9 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 - 26 tests nuevos (17 service + 9 router), 107 totales pasando
 
 **Commits realizados:**
-- Pendiente de commit
+- `632899c` — feat: implement comunicaciones module (fase 5)
 
-**Estado al cerrar:** Fase 5 completa. 107 tests pasando. Próximo: Fase 6 Portal Web.
+**Estado al cerrar:** Fase 5 completa. 107 tests pasando. Migración aplicada en Supabase remoto. Próximo: Fase 6 Portal Web.
 
 ### 2026-05-09 — Sesión 1
 **Duración aproximada:** 1 hora
