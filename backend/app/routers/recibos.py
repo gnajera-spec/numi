@@ -9,6 +9,7 @@ from app.dependencies.auth import get_current_user, require_role
 from app.repositories.periodo_repository import PeriodoRepository
 from app.repositories.recibo_repository import ReciboRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.schemas.recibos import (
     ConfirmResponse,
     CreatePeriodoRequest,
@@ -27,7 +28,13 @@ router = APIRouter(tags=["recibos"])
 
 
 def _svc(db: AsyncClient = Depends(get_supabase)) -> ReciboService:
-    return ReciboService(db, PeriodoRepository(db), ReciboRepository(db), UserRepository(db))
+    return ReciboService(
+        db,
+        PeriodoRepository(db),
+        ReciboRepository(db),
+        UserRepository(db),
+        WhatsappConfigRepository(db),
+    )
 
 
 # ── Períodos ──────────────────────────────────────────────────────────────────

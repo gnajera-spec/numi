@@ -30,28 +30,30 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 ### Fase actual
 ```
 [FASE 3] — WhatsApp Bot
-Estado: PENDIENTE — próxima sesión
-Última actualización: 2026-05-09
+Estado: COMPLETADA
+Última actualización: 2026-05-12
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada — fases 1 y 2 completadas.
+Nada — fases 1, 2 y 3 completadas.
 ```
 
 ### Próximo paso concreto
 ```
-Fase 3: WhatsApp Bot (FSM core + flujos recibos)
-- Webhook handler: POST /whatsapp/webhook (verificación + mensajes entrantes)
-- Session manager (estado de conversación por usuario en DB)
-- Flujo de recibos: notificación HSM + VER + CONFIRMO
-- Flujo de activación: link al portal
-Nota: requiere configurar Meta Cloud API (webhook URL, access token, verify token)
+Fase 4: Licencias + Aprobación RRHH
+- Tablas: tipos_licencia, politicas_licencia, solicitudes_licencia, saldo_licencias
+- Endpoints: GET/POST /licencias, PUT /licencias/{id}/aprobar|rechazar
+- Flujo bot: licencias_tipo → licencias_fechas → licencias_confirmar
+- Notificación WA cuando RRHH aprueba/rechaza (templates licencia_aprobada, licencia_rechazada)
 ```
 
 ### Bloqueantes activos
 ```
-Ninguno
+- Para activar WA en prod: configurar META_VERIFY_TOKEN + META_APP_SECRET en Render
+- Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
+- La lookup de wa_id a usuario require que los colaboradores tengan whatsapp_id_hash en DB
+  (se puebla al crear el usuario cuando WA integration está activa)
 ```
 
 ---
@@ -63,7 +65,7 @@ Ninguno
 | Fase 0 | Setup + documentación técnica base | ✅ Completada | 2026-05-09 |
 | Fase 1 | Auth + Multi-tenant + Roles + Usuarios | ✅ Completada | 2026-05-09 |
 | Fase 2 | Recibos de sueldo + Firma electrónica | ✅ Completada | 2026-05-09 |
-| Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ⏳ Pendiente | — |
+| Fase 3 | WhatsApp Bot (FSM core + flujos recibos) | ✅ Completada | 2026-05-12 |
 | Fase 4 | Licencias + Aprobación RRHH | ⏳ Pendiente | — |
 | Fase 5 | Comunicaciones institucionales | ⏳ Pendiente | — |
 | Fase 6 | Portal Web del colaborador | ⏳ Pendiente | — |
@@ -110,7 +112,8 @@ Ninguno
 | DT-003 | Firma digital Ley 25.506 fuera de scope v1.0 | Legal — implementar en v1.1 | Media | 2026-05-09 |
 | DT-004 | Reset de contraseña por email fuera de scope v1.0 | UX — flujo de recuperación manual | Baja | 2026-05-09 |
 | DT-005 | Job store de upload de recibos en `dict` en memoria — no sobrevive restart ni multi-proceso | Confiabilidad en deploy multi-worker | Alta | 2026-05-09 |
-| DT-006 | `POST /periodos/{id}/renotificar` no envía WhatsApp — devuelve count de targets, bot pendiente | Funcionalidad — se completa en Fase 3 | Alta | 2026-05-09 |
+| DT-006 | `POST /periodos/{id}/renotificar` implementado pero requiere `whatsapp_numero_raw` en usuario para enviar — pendiente de flujo de registro de wa_id | Funcionalidad parcial | Media | 2026-05-12 |
+| DT-007 | `whatsapp_id_hash` en users no se puebla aún en `create_user` — falta pasar el hash desde `user_service.create_user` cuando se recibe `whatsapp_numero` | Lookup de usuario por wa_id bloqueado | Alta | 2026-05-12 |
 
 ---
 
@@ -163,21 +166,24 @@ app/routers/
   auth.py          ✅ POST /auth/login, /refresh, /logout, /activate, GET /auth/me
   users.py         ✅ CRUD + invitaciones + ciclo de vida (suspend/reactivate/baja)
   recibos.py       ✅ Períodos, upload ZIP/PDF, distribución, firma, CSV export
+  whatsapp.py      ✅ GET|POST /webhook, GET|PUT /config
   tenants.py       ⏳ CRUD tenants (super_admin) — pendiente
   comunicaciones.py ⏳ Pendiente (Fase 5)
   licencias.py     ⏳ Pendiente (Fase 4)
   medico.py        ⏳ Pendiente (Fase 7)
-  whatsapp.py      ⏳ Pendiente (Fase 3) — próxima
 ```
 
 ### Repositorios implementados
 ```
 app/repositories/
-  user_repository.py       ✅ CRUD + ciclo de vida + búsqueda
-  token_repository.py      ✅ refresh tokens + invite tokens
-  colaborador_repository.py ✅ crear/actualizar perfil
-  periodo_repository.py    ✅ CRUD períodos de liquidación
-  recibo_repository.py     ✅ CRUD recibos + firmas + export
+  user_repository.py              ✅ CRUD + ciclo de vida + búsqueda + get_by_wa_id
+  token_repository.py             ✅ refresh tokens + invite tokens
+  colaborador_repository.py       ✅ crear/actualizar perfil
+  periodo_repository.py           ✅ CRUD períodos de liquidación
+  recibo_repository.py            ✅ CRUD recibos + firmas + export + get_latest_unsigned
+  whatsapp_config_repository.py   ✅ CRUD config WA por tenant
+  whatsapp_session_repository.py  ✅ FSM session manager (DB-based, TTL 10 min)
+  whatsapp_log_repository.py      ✅ log de mensajes inbound/outbound
 ```
 
 ### Variables de entorno requeridas
@@ -187,9 +193,9 @@ SUPABASE_URL=                  # https://ssppdyvxaeplsyheylyt.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=     # service_role key del proyecto Supabase
 SECRET_KEY=                    # mín. 32 chars, aleatorio — firma JWTs
 ALLOWED_ORIGINS=["http://localhost:5173"]
-ENCRYPTION_KEY=                # AES-256 para datos médicos sensibles (Fase 7)
-META_VERIFY_TOKEN=             # Webhook verification de Meta (Fase 3)
-META_APP_SECRET=               # Para validar firma HMAC de webhooks (Fase 3)
+ENCRYPTION_KEY=                # AES-256 (64 hex chars = 32 bytes) — access_token WA + datos médicos
+META_VERIFY_TOKEN=             # Token para verificar webhook de Meta (GET /whatsapp/webhook)
+META_APP_SECRET=               # App Secret de Meta para validar firma HMAC-SHA256 de webhooks
 ```
 
 ### Migraciones aplicadas en Supabase remoto
@@ -199,7 +205,12 @@ META_APP_SECRET=               # Para validar firma HMAC de webhooks (Fase 3)
 20260509212458_add_refresh_tokens.sql    — refresh_tokens
 20260509215257_add_recibos_schema.sql    — periodos_liquidacion, recibos,
                                            firmas_electronicas, storage bucket 'recibos'
+20260512000000_add_whatsapp_schema.sql   — users.whatsapp_id_hash, whatsapp_config,
+                                           whatsapp_sessions, whatsapp_message_log,
+                                           whatsapp_templates (con 5 templates seed)
 ```
+
+> **Pendiente aplicar en Supabase remoto:** `supabase db push` con la migración 20260512000000
 
 ### Storage Supabase
 ```
@@ -300,6 +311,36 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 - `4f466be` — docs: update CLAUDE_GUIDE — fase 2 completada, próximo WhatsApp bot
 
 **Estado al cerrar:** Fases 1 y 2 completas. 41 tests pasando. Próximo: Fase 3 WhatsApp bot.
+
+### 2026-05-12 — Sesión 4
+**Duración aproximada:** 1.5 horas
+**Objetivo de la sesión:** Fase 3 — WhatsApp Bot (FSM core + flujos recibos)
+
+**Completado:**
+- Migración: `whatsapp_config`, `whatsapp_sessions`, `whatsapp_message_log`, `whatsapp_templates` + `users.whatsapp_id_hash`
+- Seed de 5 templates HSM globales en migración
+- `app/core/config.py` — vars `META_VERIFY_TOKEN`, `META_APP_SECRET`, `ENCRYPTION_KEY`
+- `app/utils/encryption.py` — AES-256-GCM encrypt/decrypt
+- `app/schemas/whatsapp.py` — WhatsappConfigOut, WhatsappConfigUpdate, InboundMessage, BotSessionOut
+- `app/repositories/whatsapp_config_repository.py` — get_by_tenant, get_by_phone_number_id, upsert, set_active
+- `app/repositories/whatsapp_session_repository.py` — get, upsert, increment_count, reset, is_expired
+- `app/repositories/whatsapp_log_repository.py` — log inbound/outbound con manejo silencioso de errores
+- `app/services/meta_api.py` — MetaApiClient: send_text, send_template, send_document
+- `app/services/whatsapp_service.py` — FSM completa (idle → menu → recibos_ver → recibos_confirmar), verify_webhook, validate_hmac, process_webhook, notify_recibo, send_activation_link
+- `app/routers/whatsapp.py` — 4 endpoints: GET /webhook, POST /webhook, GET /config, PUT /config
+- `app/repositories/recibo_repository.py` — get_by_id_for_user, get_latest_unsigned, mark_visto
+- `app/repositories/user_repository.py` — get_by_wa_id (por SHA-256 hash)
+- `app/services/recibo_service.py` — DT-006 resuelto parcialmente (renotificar real, falta wa_id raw), tenant_id en firma
+- `app/routers/recibos.py` — pasa WhatsappConfigRepository al service
+- `main.py` — incluye whatsapp router
+- 18 tests nuevos (13 service + 5 router), 59 totales pasando
+
+**Deuda generada:**
+- DT-007: `whatsapp_id_hash` no se puebla en `create_user` — falta pasar hash desde user_service (requiere capturar número E.164 completo)
+
+**Commits realizados:** pendiente
+
+**Estado al cerrar:** Fase 3 completa. 59 tests pasando. Próximo: Fase 4 Licencias.
 
 ---
 

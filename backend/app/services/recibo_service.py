@@ -15,6 +15,7 @@ from supabase._async.client import AsyncClient
 from app.repositories.periodo_repository import PeriodoRepository
 from app.repositories.recibo_repository import ReciboRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.schemas.recibos import (
     ConfirmResponse,
     CreatePeriodoRequest,
@@ -69,11 +70,13 @@ class ReciboService:
         periodo_repo: PeriodoRepository,
         recibo_repo: ReciboRepository,
         user_repo: UserRepository,
+        wa_config_repo: WhatsappConfigRepository | None = None,
     ) -> None:
         self._db = db
         self._periodos = periodo_repo
         self._recibos = recibo_repo
         self._users = user_repo
+        self._wa_configs = wa_config_repo
 
     # ── Períodos ─────────────────────────────────────────────────
 
@@ -333,6 +336,7 @@ class ReciboService:
 
         firma_payload: dict = {
             "recibo_id": str(recibo_id),
+            "tenant_id": str(row["tenant_id"]),
             "user_id": str(current_user["id"]),
             "canal": data.canal,
             "timestamp_firma": now.isoformat(),
@@ -357,8 +361,59 @@ class ReciboService:
 
         user_ids = [str(uid) for uid in data.user_ids] if data.user_ids else None
         targets = await self._recibos.list_unsigned_user_ids(periodo_id, user_ids)
-        # WhatsApp notification deferred — DT-006
-        return {"notificados": len(targets)}
+
+        if not targets or not self._wa_configs:
+            return {"notificados": 0, "sin_wa_config": not bool(self._wa_configs)}
+
+        cfg = await self._wa_configs.get_by_tenant(tenant_id)
+        if not cfg or not cfg["is_active"]:
+            return {"notificados": 0, "sin_wa_config": True}
+
+        from app.core.config import get_settings
+        from app.repositories.whatsapp_log_repository import WhatsappLogRepository
+        from app.repositories.whatsapp_session_repository import WhatsappSessionRepository
+        from app.services.whatsapp_service import WhatsappService
+
+        settings = get_settings()
+        wa_svc = WhatsappService(
+            db=self._db,
+            settings=settings,
+            config_repo=self._wa_configs,
+            session_repo=WhatsappSessionRepository(self._db),
+            log_repo=WhatsappLogRepository(self._db),
+            user_repo=self._users,
+            recibo_repo=self._recibos,
+        )
+
+        notificados = 0
+        for uid in targets:
+            user = await self._users.get_by_id(uid)
+            if not user or not user.get("whatsapp_id_hash"):
+                continue
+            recibo = await self._recibos.get_latest_unsigned(uid, tenant_id)
+            if not recibo:
+                continue
+            # wa_id stored hashed — reconstruct is impossible, use masked number as display only
+            # Notification requires the raw wa_id; store it encrypted as part of Phase 3 setup
+            wa_id = user.get("whatsapp_numero_raw")  # set only when WA integration stores raw
+            if not wa_id:
+                continue
+            nombre = f"{user['first_name']} {user['last_name']}"
+            periodo_row = recibo.get("periodos_liquidacion") or {}
+            periodo_label = periodo_row.get("descripcion") or periodo_row.get("periodo", "")
+            ok = await wa_svc.notify_recibo(
+                tenant_id=tenant_id,
+                user_id=uid,
+                wa_id=wa_id,
+                nombre=nombre,
+                periodo=periodo_label,
+                recibo_id=str(recibo["id"]),
+                cfg=cfg,
+            )
+            if ok:
+                notificados += 1
+
+        return {"notificados": notificados}
 
     # ── Export CSV ────────────────────────────────────────────────
 

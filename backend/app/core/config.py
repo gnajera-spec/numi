@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     secret_key: str
     allowed_origins: List[str] = ["http://localhost:5173"]
 
+    # Meta Cloud API / WhatsApp
+    meta_verify_token: str = ""
+    meta_app_secret: str = ""
+
+    # AES-256 encryption key (64-char hex = 32 bytes). Required for whatsapp_config and medical data.
+    encryption_key: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

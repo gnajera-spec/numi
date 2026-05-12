@@ -34,6 +34,19 @@ class UserRepository:
         )
         return res.data
 
+    async def get_by_wa_id(self, wa_id: str, tenant_id: str) -> dict | None:
+        import hashlib
+        wa_hash = hashlib.sha256(wa_id.encode()).hexdigest()
+        res = (
+            await self._db.table("users")
+            .select("*")
+            .eq("whatsapp_id_hash", wa_hash)
+            .eq("tenant_id", tenant_id)
+            .maybe_single()
+            .execute()
+        )
+        return res.data
+
     async def get_by_cuil_and_tenant(self, cuil: str, tenant_id: str) -> dict | None:
         res = (
             await self._db.table("users")
@@ -100,6 +113,8 @@ class UserRepository:
         }
         if data.get("whatsapp_numero_masked"):
             payload["whatsapp_numero_masked"] = data["whatsapp_numero_masked"]
+        if data.get("whatsapp_id_hash"):
+            payload["whatsapp_id_hash"] = data["whatsapp_id_hash"]
         if created_by:
             payload["created_by"] = str(created_by)
 

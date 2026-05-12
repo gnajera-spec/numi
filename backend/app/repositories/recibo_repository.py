@@ -111,6 +111,36 @@ class ReciboRepository:
         res = await query.execute()
         return [r["user_id"] for r in (res.data or [])]
 
+    async def get_by_id_for_user(self, recibo_id: str, user_id: str) -> dict | None:
+        res = (
+            await self._db.table("recibos")
+            .select("*, periodos_liquidacion(periodo, descripcion)")
+            .eq("id", recibo_id)
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        return res.data
+
+    async def get_latest_unsigned(self, user_id: str, tenant_id: str) -> dict | None:
+        res = (
+            await self._db.table("recibos")
+            .select("*, periodos_liquidacion(periodo, descripcion)")
+            .eq("user_id", user_id)
+            .eq("tenant_id", tenant_id)
+            .neq("estado", "firmado")
+            .order("created_at", desc=True)
+            .limit(1)
+            .maybe_single()
+            .execute()
+        )
+        return res.data
+
+    async def mark_visto(self, recibo_id: str) -> None:
+        await self._db.table("recibos").update(
+            {"visto_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", recibo_id).is_("visto_at", "null").execute()
+
     async def create_firma(self, firma_data: dict) -> dict:
         res = await self._db.table("firmas_electronicas").insert(firma_data).select("*").single().execute()
         return res.data
