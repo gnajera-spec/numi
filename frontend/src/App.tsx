@@ -18,9 +18,12 @@ import { AdminComunicacionesPage } from "./pages/admin/AdminComunicacionesPage";
 import { AdminRecibosPage } from "./pages/admin/AdminRecibosPage";
 import { AdminUsuariosPage } from "./pages/admin/AdminUsuariosPage";
 import { AdminOrganizacionPage } from "./pages/admin/AdminOrganizacionPage";
+import { AdminMedicoFichasPage } from "./pages/admin/AdminMedicoFichasPage";
+import { AdminMedicoAccidentesPage } from "./pages/admin/AdminMedicoAccidentesPage";
+import { AdminMedicoReportesPage } from "./pages/admin/AdminMedicoReportesPage";
 import { useAuth } from "./contexts/AuthContext";
 
-const ADMIN_ROLES = ["rrhh", "admin_empresa", "super_admin"];
+const ADMIN_ROLES = ["rrhh", "admin_empresa", "super_admin", "servicio_medico"];
 
 function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -54,19 +57,30 @@ function EmployeeApp() {
   );
 }
 
+function AdminAppInner() {
+  const { user } = useAuth();
+  const defaultRoute = user?.role === "servicio_medico" ? "medico/fichas" : "dashboard";
+  return (
+    <Routes>
+      <Route path="dashboard" element={<AdminDashboardPage />} />
+      <Route path="licencias" element={<AdminLicenciasPage />} />
+      <Route path="comunicaciones" element={<AdminComunicacionesPage />} />
+      <Route path="recibos" element={<AdminRecibosPage />} />
+      <Route path="usuarios" element={<AdminUsuariosPage />} />
+      <Route path="organizacion" element={<AdminOrganizacionPage />} />
+      <Route path="medico/fichas" element={<AdminMedicoFichasPage />} />
+      <Route path="medico/accidentes" element={<AdminMedicoAccidentesPage />} />
+      <Route path="medico/reportes" element={<AdminMedicoReportesPage />} />
+      <Route path="reports" element={<AdminReportsPage />} />
+      <Route path="*" element={<Navigate to={defaultRoute} replace />} />
+    </Routes>
+  );
+}
+
 function AdminApp() {
   return (
     <AdminProtectedRoute>
-      <Routes>
-        <Route path="dashboard" element={<AdminDashboardPage />} />
-        <Route path="licencias" element={<AdminLicenciasPage />} />
-        <Route path="comunicaciones" element={<AdminComunicacionesPage />} />
-        <Route path="recibos" element={<AdminRecibosPage />} />
-        <Route path="usuarios" element={<AdminUsuariosPage />} />
-        <Route path="organizacion" element={<AdminOrganizacionPage />} />
-        <Route path="reports" element={<AdminReportsPage />} />
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
-      </Routes>
+      <AdminAppInner />
     </AdminProtectedRoute>
   );
 }

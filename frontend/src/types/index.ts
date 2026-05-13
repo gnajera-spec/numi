@@ -356,3 +356,118 @@ export interface Convenio {
   created_at: string;
   updated_at: string;
 }
+
+// Servicio médico
+export interface FichaMedicaSummary {
+  user_id: string;
+  nombre_completo: string;
+  email: string;
+  grupo_sanguineo?: string;
+  tiene_ficha: boolean;
+}
+
+export interface PaginatedFichas {
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  items: FichaMedicaSummary[];
+}
+
+export interface Alergia {
+  nombre: string;
+  severidad?: string;
+}
+
+export interface Condicion {
+  nombre: string;
+  desde?: string;
+}
+
+export interface FichaMedica {
+  id: string;
+  user_id: string;
+  grupo_sanguineo?: string;
+  factor_rh?: string;
+  alergias?: Alergia[];
+  condiciones?: Condicion[];
+  observaciones?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamenMedico {
+  id: string;
+  user_id: string;
+  tipo: "ingreso" | "periodico" | "post_ausencia" | "egreso";
+  fecha: string;
+  resultado?: string;
+  medico_responsable?: string;
+  storage_path?: string;
+  created_at: string;
+}
+
+export interface Vacunacion {
+  id: string;
+  user_id: string;
+  vacuna: string;
+  fecha: string;
+  lote?: string;
+  proxima_dosis?: string;
+  created_at: string;
+}
+
+export interface AptitudLaboral {
+  id: string;
+  user_id: string;
+  puesto_id: string;
+  estado: "apto" | "apto_con_restricciones" | "no_apto";
+  restricciones?: string;
+  fecha_emision: string;
+  fecha_vencimiento?: string;
+  created_at: string;
+}
+
+export interface AccidenteTrabajo {
+  id: string;
+  user_id: string;
+  fecha_hora: string;
+  lugar: string;
+  descripcion: string;
+  testigos?: { nombre: string; legajo?: string }[];
+  numero_art?: string;
+  estado: "abierto" | "tratamiento" | "alta" | "cerrado";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedAccidentes {
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  items: AccidenteTrabajo[];
+}
+
+export interface AbsentismoDeptItem {
+  departamento: string;
+  dias_ausentes: number;
+  colaboradores: number;
+  tasa_pct: number;
+}
+
+export interface ReporteAbsentismo {
+  periodo: { desde: string; hasta: string };
+  por_departamento: AbsentismoDeptItem[];
+  total_dias_ausentes: number;
+  tasa_global_pct: number;
+}
+
+export interface AptitudPorVencerItem {
+  user_id: string;
+  nombre_completo: string;
+  puesto: string;
+  estado: string;
+  fecha_vencimiento: string;
+  dias_restantes: number;
+}

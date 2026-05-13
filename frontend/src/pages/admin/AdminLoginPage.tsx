@@ -5,7 +5,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
 
-const ALLOWED_ROLES = ["rrhh", "admin_empresa", "super_admin"];
+const ALLOWED_ROLES = ["rrhh", "admin_empresa", "super_admin", "servicio_medico"];
 
 export function AdminLoginPage() {
   const { login, loginMfaChallenge, refreshUser, user, isAuthenticated } = useAuth();
@@ -22,7 +22,8 @@ export function AdminLoginPage() {
 
   useEffect(() => {
     if (isAuthenticated && user && ALLOWED_ROLES.includes(user.role)) {
-      navigate("/admin/dashboard", { replace: true });
+      const dest = user.role === "servicio_medico" ? "/admin/medico/fichas" : "/admin/dashboard";
+      navigate(dest, { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
 
