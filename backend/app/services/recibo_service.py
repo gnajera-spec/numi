@@ -5,7 +5,6 @@ import re
 import uuid
 import zipfile
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, Request, UploadFile, status
@@ -14,6 +13,7 @@ from supabase._async.client import AsyncClient
 
 from app.repositories.periodo_repository import PeriodoRepository
 from app.repositories.recibo_repository import ReciboRepository
+from app.repositories.upload_job_repository import UploadJobRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.schemas.recibos import (
@@ -36,10 +36,6 @@ from app.schemas.users import Pagination
 _STORAGE_BUCKET = "recibos"
 _SIGNED_URL_TTL = 86400  # 24h
 _MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MB
-
-# In-process job store: job_id → list of (cuil, filename, file_bytes, user_id|None)
-# DT-005: replace with Redis or DB table for multi-process deploy
-_upload_jobs: dict[str, dict[str, Any]] = {}
 
 
 def _extract_cuil(filename: str) -> str | None:
@@ -71,12 +67,14 @@ class ReciboService:
         recibo_repo: ReciboRepository,
         user_repo: UserRepository,
         wa_config_repo: WhatsappConfigRepository | None = None,
+        upload_job_repo: UploadJobRepository | None = None,
     ) -> None:
         self._db = db
         self._periodos = periodo_repo
         self._recibos = recibo_repo
         self._users = user_repo
         self._wa_configs = wa_config_repo
+        self._upload_jobs = upload_job_repo or UploadJobRepository(db)
 
     # ── Períodos ─────────────────────────────────────────────────
 
@@ -142,15 +140,25 @@ class ReciboService:
         if not pdfs:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "El ZIP no contiene archivos PDF")
 
-        # Match CUILs to users
+        job_id = str(uuid.uuid4())
+
+        # Match CUILs to users and upload each PDF to temp storage
         preview: list[PreviewItem] = []
         job_files: list[dict] = []
 
-        for filename, data_bytes in pdfs:
+        for idx, (filename, data_bytes) in enumerate(pdfs):
             cuil = _extract_cuil(filename)
             user = None
             if cuil:
                 user = await self._users.get_by_cuil_and_tenant(cuil, tenant_id)
+
+            temp_path = f"temp/{job_id}/{idx:04d}.pdf"
+            await self._db.storage.from_(_STORAGE_BUCKET).upload(
+                temp_path,
+                data_bytes,
+                {"content-type": "application/pdf", "upsert": "true"},
+            )
+
             preview.append(PreviewItem(
                 cuil=cuil or "desconocido",
                 nombre=f"{user['first_name']} {user['last_name']}" if user else None,
@@ -161,24 +169,20 @@ class ReciboService:
             job_files.append({
                 "cuil": cuil,
                 "filename": filename,
-                "data": data_bytes,
-                "user_id": user["id"] if user else None,
+                "temp_path": temp_path,
+                "user_id": str(user["id"]) if user else None,
+                "size_bytes": len(data_bytes),
             })
 
-        job_id = str(uuid.uuid4())
-        _upload_jobs[job_id] = {
-            "periodo_id": periodo_id,
-            "tenant_id": tenant_id,
-            "files": job_files,
-        }
+        await self._upload_jobs.create(job_id, tenant_id, periodo_id, job_files)
 
         return UploadResponse(job_id=job_id, total_archivos=len(pdfs), preview=preview)
 
     async def confirm_upload(
         self, periodo_id: str, tenant_id: str, job_id: str
     ) -> ConfirmResponse:
-        job = _upload_jobs.get(job_id)
-        if not job or job["periodo_id"] != periodo_id or job["tenant_id"] != tenant_id:
+        job = await self._upload_jobs.get(job_id, tenant_id, periodo_id)
+        if not job:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Job no encontrado o expirado")
 
         periodo = await self._periodos.get(periodo_id, tenant_id)
@@ -188,17 +192,20 @@ class ReciboService:
         distribuidos = 0
         errores: list[str] = []
         records: list[dict] = []
+        temp_paths: list[str] = []
 
         for item in job["files"]:
+            temp_paths.append(item["temp_path"])
+
             if not item["user_id"] or not item["cuil"]:
                 errores.append(item.get("cuil") or item["filename"])
                 continue
 
-            file_bytes: bytes = item["data"]
             cuil: str = item["cuil"]
             storage_path = _storage_path(tenant_id, periodo_id, cuil)
 
             try:
+                file_bytes: bytes = await self._db.storage.from_(_STORAGE_BUCKET).download(item["temp_path"])
                 await self._db.storage.from_(_STORAGE_BUCKET).upload(
                     storage_path,
                     file_bytes,
@@ -214,7 +221,7 @@ class ReciboService:
                 "user_id": str(item["user_id"]),
                 "storage_path": storage_path,
                 "archivo_hash": _file_hash(file_bytes),
-                "archivo_size_bytes": len(file_bytes),
+                "archivo_size_bytes": item["size_bytes"],
                 "estado": "pendiente",
             })
             distribuidos += 1
@@ -224,7 +231,14 @@ class ReciboService:
             await self._periodos.increment_total_recibos(periodo_id, len(records))
             await self._periodos.update_estado(periodo_id, "distribuido")
 
-        del _upload_jobs[job_id]
+        # Clean up temp files and job record
+        if temp_paths:
+            try:
+                await self._db.storage.from_(_STORAGE_BUCKET).remove(temp_paths)
+            except Exception:
+                pass  # best-effort cleanup
+        await self._upload_jobs.delete(job_id)
+
         return ConfirmResponse(distribuidos=distribuidos, errores=errores)
 
     # ── Dashboard de período ──────────────────────────────────────

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.schemas.recibos import CreatePeriodoRequest, FirmarRequest, RenotificarRequest
-from app.services.recibo_service import ReciboService, _extract_cuil, _upload_jobs
+from app.services.recibo_service import ReciboService, _extract_cuil
 
 
 TENANT_ID = "00000000-0000-0000-0000-000000000010"
@@ -61,12 +61,13 @@ def _make_current_user(**kwargs) -> dict:
     return base
 
 
-def _make_svc(db=None, periodo_repo=None, recibo_repo=None, user_repo=None) -> ReciboService:
+def _make_svc(db=None, periodo_repo=None, recibo_repo=None, user_repo=None, upload_job_repo=None) -> ReciboService:
     return ReciboService(
         db or AsyncMock(),
         periodo_repo or AsyncMock(),
         recibo_repo or AsyncMock(),
         user_repo or AsyncMock(),
+        upload_job_repo=upload_job_repo or AsyncMock(),
     )
 
 
@@ -114,7 +115,6 @@ async def test_create_periodo_returns_periodo_out():
 @pytest.mark.asyncio
 async def test_upload_single_pdf_returns_preview():
     from fastapi import UploadFile
-    import io
 
     periodo_repo = AsyncMock()
     periodo_repo.get.return_value = _make_periodo()
@@ -122,6 +122,12 @@ async def test_upload_single_pdf_returns_preview():
     user_repo.get_by_cuil_and_tenant.return_value = {
         "id": USER_ID, "first_name": "Ana", "last_name": "Lopez"
     }
+    upload_job_repo = AsyncMock()
+
+    storage_bucket = MagicMock()
+    storage_bucket.upload = AsyncMock()
+    db = AsyncMock()
+    db.storage.from_ = MagicMock(return_value=storage_bucket)
 
     pdf_bytes = b"%PDF-1.4 fake pdf content"
     mock_file = MagicMock(spec=UploadFile)
@@ -129,13 +135,17 @@ async def test_upload_single_pdf_returns_preview():
     mock_file.filename = "20123456789.pdf"
     mock_file.content_type = "application/pdf"
 
-    svc = _make_svc(periodo_repo=periodo_repo, user_repo=user_repo)
+    svc = _make_svc(db=db, periodo_repo=periodo_repo, user_repo=user_repo, upload_job_repo=upload_job_repo)
     result = await svc.upload_recibos(PERIODO_ID, TENANT_ID, mock_file)
 
     assert result.total_archivos == 1
     assert result.preview[0].cuil == "20123456789"
     assert result.preview[0].matched is True
-    assert result.job_id in _upload_jobs
+    upload_job_repo.create.assert_called_once()
+    _, call_tenant, call_periodo, call_files = upload_job_repo.create.call_args.args
+    assert call_tenant == TENANT_ID
+    assert call_periodo == PERIODO_ID
+    assert call_files[0]["cuil"] == "20123456789"
 
 
 @pytest.mark.asyncio
@@ -154,13 +164,19 @@ async def test_upload_zip_extracts_pdfs():
     periodo_repo.get.return_value = _make_periodo()
     user_repo = AsyncMock()
     user_repo.get_by_cuil_and_tenant.return_value = None
+    upload_job_repo = AsyncMock()
+
+    storage_bucket = MagicMock()
+    storage_bucket.upload = AsyncMock()
+    db = AsyncMock()
+    db.storage.from_ = MagicMock(return_value=storage_bucket)
 
     mock_file = MagicMock(spec=UploadFile)
     mock_file.read = AsyncMock(return_value=zip_bytes)
     mock_file.filename = "recibos.zip"
     mock_file.content_type = "application/zip"
 
-    svc = _make_svc(periodo_repo=periodo_repo, user_repo=user_repo)
+    svc = _make_svc(db=db, periodo_repo=periodo_repo, user_repo=user_repo, upload_job_repo=upload_job_repo)
     result = await svc.upload_recibos(PERIODO_ID, TENANT_ID, mock_file)
 
     assert result.total_archivos == 2
