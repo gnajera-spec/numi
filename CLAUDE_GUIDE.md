@@ -29,10 +29,10 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-Módulo Tenants — completado
+Front-office RRHH — completado
 Última actualización: 2026-05-13
 Tests: 180 pasando
-Commits pendientes: sesiones 8, 9, 10 sin commitear (fases 7, 8, módulo tenants)
+Commits pendientes: ninguno
 ```
 
 ### En este momento estoy trabajando en
@@ -42,10 +42,11 @@ Nada.
 
 ### Próximo paso concreto
 ```
-Sin tarea definida. Posibles trabajos:
-- Mejoras UX: paginación en listas, búsqueda de colaboradores
-- Deploy y validación en producción (push a Render + variables de entorno META)
-- MFA antes de producción (DT-002)
+Sin tarea definida. Posibles trabajos (orden de impacto):
+1. MFA (TOTP) — DT-002 — obligatorio antes de prod para admin/rrhh/médico
+2. Deploy a Render — push main + variables de entorno en Render
+3. Estructura org en admin portal (sedes, departamentos, puestos) — base para filtros de usuarios
+4. DT-005 — Job store de upload en Redis o tabla DB (en lugar de dict en memoria)
 ```
 
 ### Bloqueantes activos
@@ -215,13 +216,18 @@ frontend/src/
     pages/admin/AdminDashboardPage.tsx  ✅ /admin/dashboard — 6 KPIs + gráfico tendencia licencias
     pages/admin/AdminReportsPage.tsx    ✅ /admin/reports — exports CSV licencias y comunicaciones
 
-  ⏳ Portal RRHH SIN IMPLEMENTAR (solo back-end existe):
-    - Gestión de licencias (aprobar/rechazar)
-    - Crear/enviar comunicaciones
-    - Subir recibos de sueldo (upload ZIP/PDF)
-    - CRUD usuarios (crear, suspender, dar de baja)
-    - Gestión de estructura org (sedes, departamentos, puestos)
-    - Servicio médico (fichas, exámenes, aptitudes)
+  Portal RRHH (/admin/*):
+    pages/admin/AdminLoginPage.tsx          ✅ /admin/login
+    pages/admin/AdminDashboardPage.tsx      ✅ /admin/dashboard — 6 KPIs + tendencia
+    pages/admin/AdminReportsPage.tsx        ✅ /admin/reports — exports CSV
+    pages/admin/AdminLicenciasPage.tsx      ✅ /admin/licencias — lista + filtro estado + aprobar/rechazar modal
+    pages/admin/AdminComunicacionesPage.tsx ✅ /admin/comunicaciones — lista + crear borrador + enviar + reenviar
+    pages/admin/AdminRecibosPage.tsx        ✅ /admin/recibos — períodos + upload ZIP/PDF + preview + confirm + dashboard recibos
+    pages/admin/AdminUsuariosPage.tsx       ✅ /admin/usuarios — lista + search + crear + suspend/reactivate/baja + reinvitar
+
+  ⏳ Portal RRHH SIN IMPLEMENTAR:
+    - Gestión de estructura org (sedes, departamentos, puestos) — opcional v1
+    - Servicio médico (fichas, exámenes, aptitudes) — acceso exclusivo servicio_medico
 ```
 
 ### Módulos del backend — estado de implementación
@@ -322,6 +328,29 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 ---
 
 ## LOG DE SESIONES
+
+### 2026-05-13 — Sesión 11
+**Duración aproximada:** 45 min
+**Objetivo de la sesión:** Front-office RRHH — portal admin completo
+
+**Completado:**
+- Commits pendientes de sesiones 9 y 10 (Fase 8 + Módulo Tenants)
+- Tipos admin en `frontend/src/types/index.ts`: UserSummary, CreateUserRequest, PeriodoLiquidacion, CreatePeriodoRequest, UploadPreviewResponse/Item, UploadConfirmResponse, ReciboDashboardItem, ComunicacionAdmin, NuevaComunicacion, MetricasComunicacion, EstadoUsuario, RolUsuario
+- `frontend/src/services/adminLicenciasService.ts` — listSolicitudes (filtros), aprobar, rechazar
+- `frontend/src/services/adminComunicacionesService.ts` — list, create, get, enviar, reenviar
+- `frontend/src/services/adminRecibosService.ts` — listPeriodos, createPeriodo, upload (multipart), confirmUpload, getRecibos, downloadCsv
+- `frontend/src/services/adminUsuariosService.ts` — list (search+filtros), create, invite, suspend, reactivate, baja
+- `frontend/src/pages/admin/AdminLicenciasPage.tsx` — lista con filtro estado + ReviewModal (aprobar/rechazar con comentario)
+- `frontend/src/pages/admin/AdminComunicacionesPage.tsx` — lista + NuevaComunicacionModal (asunto/cuerpo/segmento/confirmación) + acciones enviar/reenviar inline
+- `frontend/src/pages/admin/AdminRecibosPage.tsx` — NuevoPeriodoModal + UploadModal (selección archivo → preview CUIL → confirm distribución) + PeriodoDetalle (dashboard recibos + CSV export)
+- `frontend/src/pages/admin/AdminUsuariosPage.tsx` — lista con search + filtro estado + NuevoUsuarioModal + ConfirmModal para suspend/baja/reactivate + acción reinvitar
+- `AdminLayout.tsx` — sidebar actualizado con Licencias, Comunicaciones, Recibos, Usuarios
+- `App.tsx` — rutas /admin/licencias, /admin/comunicaciones, /admin/recibos, /admin/usuarios
+- Build TypeScript sin errores (2330 módulos)
+
+**Estado al cerrar:** Portal RRHH completo. 4 módulos de front-office implementados. Próximo: MFA o Deploy.
+
+---
 
 ### 2026-05-13 — Sesión 10
 **Duración aproximada:** 45 min
