@@ -29,9 +29,9 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-Front-office RRHH — completado
+MFA (TOTP) — completado (DT-002 cerrado)
 Última actualización: 2026-05-13
-Tests: 180 pasando
+Tests: 195 pasando
 Commits pendientes: ninguno
 ```
 
@@ -46,7 +46,7 @@ Foco actual: levantar todo en DEV y validar el sistema completo.
 Deploy a Render: OUT OF SCOPE por ahora — se retoma cuando se decida el pase a producción.
 
 Pendientes ordenados por impacto en DEV:
-1. MFA (TOTP) — DT-002 — backend + frontend para admin/rrhh/médico
+1. supabase db push — aplicar migración 20260513000000_add_mfa_backup_codes.sql al proyecto remoto
 2. DT-005 — Job store de upload de recibos en tabla DB (hoy es dict en memoria, no sobrevive restart)
 3. Estructura org en admin portal (sedes, departamentos, puestos) — el backend ya existe, falta el front
 4. Portal servicio médico — fichas, exámenes, aptitudes (front-office)
@@ -71,11 +71,10 @@ Pendientes ordenados por impacto en DEV:
 
 ### Pendiente para próxima sesión
 ```
-Opciones (en orden de impacto para producción):
-1. Front-office RRHH — UI para aprobar licencias, crear comunicaciones, subir recibos, gestionar usuarios
-2. MFA (TOTP) — DT-002 — obligatorio antes de prod para admin/rrhh/médico
-3. Deploy a Render — push main + variables de entorno en Render
-4. DT-005 — Job store de upload en Redis o tabla DB (en lugar de dict en memoria)
+1. supabase db push — migración MFA (add_mfa_backup_codes) al proyecto remoto
+2. DT-005 — Job store de upload de recibos en tabla DB (en lugar de dict en memoria)
+3. Estructura org en admin portal (sedes, departamentos, puestos) — backend listo, falta UI
+4. Portal servicio médico (fichas, exámenes, aptitudes) — front-office para rol servicio_medico
 ```
 
 ---
@@ -130,7 +129,7 @@ Opciones (en orden de impacto para producción):
 | ID | Descripción | Impacto | Prioridad | Agregado |
 |----|-------------|---------|-----------|---------|
 | DT-001 | Message queue (RabbitMQ/SQS) no implementada en v1 — envíos masivos serán síncronos inicialmente | Performance en envíos a >100 destinatarios | Alta | 2026-05-09 |
-| DT-002 | MFA (TOTP) pendiente hasta antes de producción | Seguridad para roles admin/rrhh/médico | Alta | 2026-05-09 |
+| DT-002 | ~~MFA (TOTP) pendiente hasta antes de producción~~ | ✅ Implementado — TOTP + backup codes + 2-step login + ProfilePage setup | — | 2026-05-13 |
 | DT-003 | Firma digital Ley 25.506 fuera de scope v1.0 | Legal — implementar en v1.1 | Media | 2026-05-09 |
 | DT-004 | Reset de contraseña por email fuera de scope v1.0 | UX — flujo de recuperación manual | Baja | 2026-05-09 |
 | DT-005 | Job store de upload de recibos en `dict` en memoria — no sobrevive restart ni multi-proceso | Confiabilidad en deploy multi-worker | Alta | 2026-05-09 |
@@ -212,7 +211,7 @@ frontend/src/
     pages/ReceiptsPage.tsx        ✅ /employee/receipts — lista + descarga + modal firma
     pages/LeavesPage.tsx          ✅ /employee/leaves — saldo + historial + modal nueva solicitud
     pages/CommunicationsPage.tsx  ✅ /employee/communications — lista + filtros + modal detalle/confirmación
-    pages/ProfilePage.tsx         ✅ /employee/profile — datos + cambio de contraseña
+    pages/ProfilePage.tsx         ✅ /employee/profile — datos + cambio de contraseña + MFA setup/disable
 
   Portal RRHH (/admin/*):
     pages/admin/AdminLoginPage.tsx      ✅ /admin/login — valida que el rol sea rrhh/admin_empresa
@@ -236,7 +235,7 @@ frontend/src/
 ### Módulos del backend — estado de implementación
 ```
 app/routers/
-  auth.py          ✅ POST /auth/login, /refresh, /logout, /activate, GET /auth/me
+  auth.py          ✅ POST /auth/login, /refresh, /logout, /activate, GET /auth/me, GET /auth/mfa/setup, POST /auth/mfa/enable, /auth/mfa/disable, /auth/mfa/challenge
   users.py         ✅ CRUD + invitaciones + ciclo de vida (suspend/reactivate/baja)
   recibos.py       ✅ Períodos, upload ZIP/PDF, distribución, firma, CSV export
   whatsapp.py      ✅ GET|POST /webhook, GET|PUT /config
