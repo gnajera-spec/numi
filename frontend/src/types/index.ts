@@ -123,3 +123,41 @@ export interface Paginated<T> {
   page_size: number;
   pages: number;
 }
+
+// Reportes
+export interface DashboardKPIs {
+  headcount: number;
+  licencias_activas_hoy: number;
+  licencias_pendientes_aprobacion: number;
+  vencimientos_proximos_30d: number;
+  recibos_sin_firmar: number;
+  comunicados_sin_confirmar: number;
+}
+
+export interface SedeCount {
+  sede: string;
+  count: number;
+}
+
+export interface DepartamentoCount {
+  departamento: string;
+  count: number;
+}
+
+export interface HeadcountDistribucion {
+  total: number;
+  por_sede: SedeCount[];
+  por_departamento: DepartamentoCount[];
+}
+
+export interface TendenciaMes {
+  mes: string;
+  total: number;
+  aprobadas: number;
+  rechazadas: number;
+  pendientes: number;
+}
+
+export interface TendenciaLicencias {
+  tendencia: TendenciaMes[];
+}

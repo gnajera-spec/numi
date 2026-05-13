@@ -1293,6 +1293,117 @@ Extiende `UserSummary` con:
 
 ---
 
+## 13b. Reportes + Dashboard RRHH
+
+### Autenticación
+Todos los endpoints requieren rol `rrhh`, `admin_empresa` o `super_admin`.  
+Leyenda: 👔 = rrhh/admin_empresa/super_admin
+
+---
+
+### `GET /reportes/dashboard` 👔
+
+KPIs del tenant para el dashboard de RRHH.
+
+**Response 200:**
+```json
+{
+  "headcount": 42,
+  "licencias_activas_hoy": 3,
+  "licencias_pendientes_aprobacion": 2,
+  "vencimientos_proximos_30d": 5,
+  "recibos_sin_firmar": 8,
+  "comunicados_sin_confirmar": 14
+}
+```
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `headcount` | integer | Colaboradores con estado `activo` |
+| `licencias_activas_hoy` | integer | Solicitudes aprobadas que cubren la fecha de hoy |
+| `licencias_pendientes_aprobacion` | integer | Solicitudes en estado `pendiente` |
+| `vencimientos_proximos_30d` | integer | Aptitudes laborales con `valida_hasta` en los próximos 30 días |
+| `recibos_sin_firmar` | integer | Recibos sin firma del período más reciente activo |
+| `comunicados_sin_confirmar` | integer | Destinatarios que no confirmaron comunicados activos |
+
+---
+
+### `GET /reportes/headcount` 👔
+
+Distribución de headcount por sede y departamento.
+
+**Response 200:**
+```json
+{
+  "total": 42,
+  "por_sede": [
+    { "sede": "Casa Central", "count": 30 },
+    { "sede": "Sucursal Norte", "count": 12 }
+  ],
+  "por_departamento": [
+    { "departamento": "Tecnología", "count": 15 },
+    { "departamento": "Administración", "count": 10 }
+  ]
+}
+```
+
+---
+
+### `GET /reportes/licencias` 👔
+
+Tendencia mensual de licencias de los últimos 6 meses.
+
+**Query params:**
+
+| Param | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `meses` | integer | 6 | Cantidad de meses hacia atrás |
+
+**Response 200:**
+```json
+{
+  "tendencia": [
+    { "mes": "2025-12", "total": 8, "aprobadas": 6, "rechazadas": 1, "pendientes": 1 },
+    { "mes": "2026-01", "total": 10, "aprobadas": 8, "rechazadas": 2, "pendientes": 0 }
+  ]
+}
+```
+
+---
+
+### `GET /reportes/export/licencias` 👔
+
+Exportar solicitudes de licencias como CSV.
+
+**Query params:**
+
+| Param | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `desde` | date | — | Filtro fecha inicio (inclusive) |
+| `hasta` | date | — | Filtro fecha fin (inclusive) |
+| `estado` | string | — | Filtro por estado: `pendiente`, `aprobada`, `rechazada`, `cancelada` |
+
+**Response:** `text/csv`  
+Columnas: `numero_solicitud`, `colaborador`, `cuil`, `tipo_licencia`, `fecha_inicio`, `fecha_fin`, `dias_habiles`, `estado`, `canal`, `creado_at`, `revisado_por`, `revisado_at`
+
+---
+
+### `GET /reportes/export/comunicaciones` 👔
+
+Exportar comunicaciones con métricas de recepción como CSV.
+
+**Query params:**
+
+| Param | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `desde` | date | — | Filtro por fecha de envío |
+| `hasta` | date | — | Filtro por fecha de envío |
+
+**Response:** `text/csv`  
+Columnas: `titulo`, `tipo`, `estado`, `enviado_at`, `total_destinatarios`, `leidos`, `confirmados`, `tasa_lectura`, `tasa_confirmacion`
+
+---
+
 ## 14. Seguridad — checklist de implementación
 
 - [ ] HTTPS obligatorio en todos los endpoints

@@ -29,41 +29,49 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-[FASE 7] — Servicio Médico
-Estado: COMPLETADA
-Última actualización: 2026-05-12
+Módulo Tenants — completado
+Última actualización: 2026-05-13
+Tests: 180 pasando
+Commits pendientes: sesiones 8, 9, 10 sin commitear (fases 7, 8, módulo tenants)
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada — fases 1–7 completadas.
+Nada.
 ```
 
 ### Próximo paso concreto
 ```
-Fase 8: Reportes + Dashboard RRHH
-- Dashboard con KPIs del tenant (headcount, ausentismo, vencimientos)
-- Exportaciones CSV/Excel por módulo
-- Gráficos de tendencias
+Sin tarea definida. Posibles trabajos:
+- Mejoras UX: paginación en listas, búsqueda de colaboradores
+- Deploy y validación en producción (push a Render + variables de entorno META)
+- MFA antes de producción (DT-002)
 ```
 
 ### Bloqueantes activos
 ```
 - Para activar WA en prod: configurar META_VERIFY_TOKEN + META_APP_SECRET en Render
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
-- supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql (comunicaciones ya aplicada)
-- ALLOWED_ORIGINS debe incluir el puerto real del frontend al correr en local (5173 o 5174 según disponibilidad)
+- supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql
+- ALLOWED_ORIGINS en .env local: ["http://localhost:5173","http://localhost:5174"]
+- uvicorn --reload NO detecta cambios en .env — reiniciar manualmente si se cambia
+- Deploy en Render nunca realizado — push a main pendiente
 ```
 
-### Fixes aplicados en esta sesión
+### Notas de desarrollo local
 ```
-- Bug crítico: app/db/supabase.py — create_client (AsyncClient) no se awaiteaba.
-  lru_cache sincrónico devolvía la coroutine en lugar del cliente.
-  Fix: singleton global con await en get_supabase().
-- CORS: ALLOWED_ORIGINS en .env actualizado a ["http://localhost:5173","http://localhost:5174"]
-- Nota: uvicorn --reload NO detecta cambios en .env — reiniciar manualmente si se cambia.
-- seed_demo.py creado en backend/ para seed de datos de prueba (tenant + usuarios demo).
-  Credenciales: colab@demo.com / Colab1234 | admin@demo.com / Admin1234
+- seed_demo.py en backend/ para seed de datos de prueba (no commitear — tiene service_role_key)
+  Credenciales demo: colab@demo.com / Colab1234 | admin@demo.com / Admin1234
+- Backend corre en :8000, frontend en :5173 o :5174 según disponibilidad
+```
+
+### Pendiente para próxima sesión
+```
+Opciones (en orden de impacto para producción):
+1. Front-office RRHH — UI para aprobar licencias, crear comunicaciones, subir recibos, gestionar usuarios
+2. MFA (TOTP) — DT-002 — obligatorio antes de prod para admin/rrhh/médico
+3. Deploy a Render — push main + variables de entorno en Render
+4. DT-005 — Job store de upload en Redis o tabla DB (en lugar de dict en memoria)
 ```
 
 ---
@@ -80,7 +88,7 @@ Fase 8: Reportes + Dashboard RRHH
 | Fase 5 | Comunicaciones institucionales | ✅ Completada | 2026-05-12 |
 | Fase 6 | Portal Web del colaborador | ✅ Completada | 2026-05-12 |
 | Fase 7 | Servicio Médico | ✅ Completada | 2026-05-12 |
-| Fase 8 | Reportes + Dashboard RRHH | ⏳ Pendiente | — |
+| Fase 8 | Reportes + Dashboard RRHH | ✅ Completada | 2026-05-12 |
 
 ---
 
@@ -170,32 +178,50 @@ Fase 8: Reportes + Dashboard RRHH
 5. Si aprobada: saldo_licencias se actualiza automáticamente
 ```
 
-### Frontend — Portal Web (Fase 6)
+### Frontend — estructura completa
 ```
 frontend/src/
-  types/index.ts                  ✅ Tipos TS para todos los módulos
-  lib/apiClient.ts                ✅ Cliente base (interceptores 401/403)
+  types/index.ts                  ✅ Tipos TS para auth, recibos, licencias, comunicaciones, reportes
+  lib/apiClient.ts                ✅ Cliente base (interceptores 401→login según path /admin o /employee)
   contexts/AuthContext.tsx        ✅ Auth state + login/logout/refreshUser
   components/
     ProtectedRoute.tsx            ✅ Redirect a /employee/login si no auth
+    AdminLayout.tsx               ✅ Sidebar con nav admin (Dashboard, Reportes) + user footer
     Layout.tsx                    ✅ Header + nav desktop (tabs) + nav mobile (bottom bar)
     Button.tsx                    ✅ primary / secondary / destructive + loading state
     EmptyState.tsx                ✅ Ícono + título + subtítulo + CTA opcional
     ErrorBanner.tsx               ✅ Banner rojo + botón Reintentar
+    KPICard.tsx                   ✅ Card métrica con variantes de color de estado
     Spinner.tsx                   ✅ Spinner animado
+    TrendChart.tsx                ✅ Gráfico de barras recharts (tendencia licencias)
   services/
     authService.ts                ✅ login, activate, refresh, logout, me
     recibosService.ts             ✅ list, get (signed URL), firmar
     licenciasService.ts           ✅ tipos, mis-solicitudes, saldo, crear, cancelar, subirDocumento
     comunicacionesService.ts      ✅ list, confirmar
-  pages/
-    LoginPage.tsx                 ✅ /employee/login
-    ActivatePage.tsx              ✅ /employee/activate?token=...
-    DashboardPage.tsx             ✅ /employee/dashboard — accesos directos + badge pendientes
-    ReceiptsPage.tsx              ✅ /employee/receipts — lista + descarga + modal firma
-    LeavesPage.tsx                ✅ /employee/leaves — saldo + historial + modal nueva solicitud
-    CommunicationsPage.tsx        ✅ /employee/communications — lista + filtros + modal detalle/confirmación
-    ProfilePage.tsx               ✅ /employee/profile — datos + cambio de contraseña
+    reportesService.ts            ✅ getDashboard, getHeadcount, getTendenciaLicencias, downloadCsv
+
+  Portal colaborador (/employee/*):
+    pages/LoginPage.tsx           ✅ /employee/login
+    pages/ActivatePage.tsx        ✅ /employee/activate?token=...
+    pages/DashboardPage.tsx       ✅ /employee/dashboard — accesos directos + badge pendientes
+    pages/ReceiptsPage.tsx        ✅ /employee/receipts — lista + descarga + modal firma
+    pages/LeavesPage.tsx          ✅ /employee/leaves — saldo + historial + modal nueva solicitud
+    pages/CommunicationsPage.tsx  ✅ /employee/communications — lista + filtros + modal detalle/confirmación
+    pages/ProfilePage.tsx         ✅ /employee/profile — datos + cambio de contraseña
+
+  Portal RRHH (/admin/*):
+    pages/admin/AdminLoginPage.tsx      ✅ /admin/login — valida que el rol sea rrhh/admin_empresa
+    pages/admin/AdminDashboardPage.tsx  ✅ /admin/dashboard — 6 KPIs + gráfico tendencia licencias
+    pages/admin/AdminReportsPage.tsx    ✅ /admin/reports — exports CSV licencias y comunicaciones
+
+  ⏳ Portal RRHH SIN IMPLEMENTAR (solo back-end existe):
+    - Gestión de licencias (aprobar/rechazar)
+    - Crear/enviar comunicaciones
+    - Subir recibos de sueldo (upload ZIP/PDF)
+    - CRUD usuarios (crear, suspender, dar de baja)
+    - Gestión de estructura org (sedes, departamentos, puestos)
+    - Servicio médico (fichas, exámenes, aptitudes)
 ```
 
 ### Módulos del backend — estado de implementación
@@ -206,9 +232,10 @@ app/routers/
   recibos.py       ✅ Períodos, upload ZIP/PDF, distribución, firma, CSV export
   whatsapp.py      ✅ GET|POST /webhook, GET|PUT /config
   licencias.py     ✅ tipos, políticas, solicitudes (CRUD + aprobar/rechazar/cancelar), saldo
-  tenants.py       ⏳ CRUD tenants (super_admin) — pendiente
   comunicaciones.py ✅ POST /comunicaciones, GET /comunicaciones, GET /{id}, POST /{id}/adjuntos, POST /{id}/enviar, POST /{id}/reenviar, GET /colaborador, POST /{id}/confirmar
   medico.py        ✅ GET /medico/fichas, GET|PUT /medico/fichas/{user_id}, GET|POST /medico/examenes/{user_id}, GET|POST /medico/vacunaciones/{user_id}, GET|POST /medico/aptitudes/{user_id}, GET|POST /medico/accidentes, PATCH /medico/accidentes/{id}, GET /medico/reportes/absentismo, GET /medico/reportes/aptitudes-por-vencer
+  reportes.py      ✅ GET /reportes/dashboard, GET /reportes/headcount, GET /reportes/licencias, GET /reportes/export/licencias, GET /reportes/export/comunicaciones
+  tenants.py       ✅ GET|POST /tenants, GET|PATCH /tenants/{id}, GET /tenants/me, PATCH /tenants/me/branding, GET|POST /sedes, PATCH /sedes/{id}, GET|POST /departamentos, PATCH /departamentos/{id}, GET|POST /puestos, PATCH /puestos/{id}, GET|POST /convenios
 ```
 
 ### Repositorios implementados
@@ -234,6 +261,12 @@ app/repositories/
   vacunacion_repository.py                 ✅ create, list_by_user
   aptitud_laboral_repository.py            ✅ create, list_by_user, list_por_vencer
   accidente_trabajo_repository.py          ✅ create, get, list_by_tenant, update
+  reportes_repository.py                   ✅ get_headcount, get_licencias_activas_hoy, get_licencias_pendientes, get_vencimientos_proximos, get_recibos_sin_firmar, get_comunicados_sin_confirmar, get_headcount_por_sede, get_headcount_por_departamento, get_tendencia_licencias, get_licencias_para_export, get_comunicaciones_para_export, get_metricas_comunicacion
+  tenant_repository.py                     ✅ list, get, get_by_cuit, get_by_subdominio, create, update
+  sede_repository.py                       ✅ list, get, get_by_nombre, create, update
+  departamento_repository.py               ✅ list, get, get_by_nombre, count_niveles, create, update
+  puesto_repository.py                     ✅ list, get, get_by_nombre, create, update
+  convenio_repository.py                   ✅ list, get_by_nombre, create
 ```
 
 ### Variables de entorno requeridas
@@ -289,6 +322,67 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 ---
 
 ## LOG DE SESIONES
+
+### 2026-05-13 — Sesión 10
+**Duración aproximada:** 45 min
+**Objetivo de la sesión:** Módulo Tenants (pendiente desde Fase 1)
+
+**Completado:**
+- `app/schemas/tenants.py` — TenantCreate/Update/BrandingUpdate/Out/Summary, SedeCreate/Update/Out, DepartamentoCreate/Update/Out (árbol recursivo), PuestoCreate/Update/Out, ConvenioCreate/Out + schemas paginados
+- `app/repositories/tenant_repository.py` — list (con filtros), get, get_by_cuit, get_by_subdominio, create, update
+- `app/repositories/sede_repository.py` — list, get, get_by_nombre, create, update
+- `app/repositories/departamento_repository.py` — list, get, get_by_nombre, count_niveles (validación máx. 3 niveles), create, update
+- `app/repositories/puesto_repository.py` — list, get, get_by_nombre, create, update
+- `app/repositories/convenio_repository.py` — list, get_by_nombre, create
+- `app/services/tenant_service.py` — CRUD completo + árbol departamentos (_build_tree) + validaciones de unicidad y jerarquía
+- `app/routers/tenants.py` — 20 endpoints (tenants, sedes, departamentos, puestos, convenios)
+- `main.py` actualizado con tenants router
+- 31 tests nuevos (17 service + 14 router), 180 totales pasando
+
+**Decisiones de scope:**
+- Endpoints de org structure (`/sedes`, `/departamentos`, `/puestos`, `/convenios`) usan `tenant_id` del JWT → restringidos a `admin_empresa` y `rrhh` (no `super_admin`)
+- `GET /tenants/me` y `PATCH /tenants/me/branding` restringidos a `admin_empresa` y `rrhh` (super_admin usa `/tenants/{id}`)
+- Creación del primer `admin_empresa` al crear tenant: OUT OF SCOPE v1 (pendiente DT — requiere invite_token + email trigger)
+- Importación masiva CSV de estructura: OUT OF SCOPE v1
+
+**Estado al cerrar:** Módulo Tenants completo. 180 tests pasando.
+
+---
+
+### 2026-05-12 — Sesión 9
+**Duración aproximada:** 1 hora
+**Objetivo de la sesión:** Fase 8 — Reportes + Dashboard RRHH
+
+**Completado:**
+- `docs/API_SPEC.md` — nueva sección 13b con 5 endpoints `/reportes`
+- `app/schemas/reportes.py` — DashboardKPIs, HeadcountDistribucion, TendenciaLicencias, SedeCount, DepartamentoCount, TendenciaMes
+- `app/repositories/reportes_repository.py` — 12 métodos de solo lectura para KPIs y exports
+- `app/services/reporte_service.py` — dashboard KPIs (asyncio.gather concurrente), headcount, tendencia mensual, exports CSV licencias y comunicaciones
+- `app/routers/reportes.py` — 5 endpoints: GET /dashboard, /headcount, /licencias, /export/licencias, /export/comunicaciones
+- `main.py` actualizado con reportes router
+- 18 tests nuevos (10 service + 8 router), 149 totales pasando
+- `frontend/src/lib/apiClient.ts` — redirect 401 inteligente: `/admin/login` si path es `/admin/*`, `/employee/login` en otro caso
+- `frontend/src/types/index.ts` — tipos TS para DashboardKPIs, HeadcountDistribucion, TendenciaLicencias, etc.
+- `frontend/src/services/reportesService.ts` — getDashboard, getHeadcount, getTendenciaLicencias, downloadCsv
+- `frontend/src/components/AdminLayout.tsx` — sidebar con nav admin (Dashboard, Reportes) + user footer
+- `frontend/src/components/KPICard.tsx` — card con variantes de color de estado
+- `frontend/src/components/TrendChart.tsx` — gráfico de barras recharts con leyenda y tooltips
+- `frontend/src/pages/admin/AdminLoginPage.tsx` — `/admin/login` con validación de rol
+- `frontend/src/pages/admin/AdminDashboardPage.tsx` — `/admin/dashboard` con KPIs + gráfico tendencia
+- `frontend/src/pages/admin/AdminReportsPage.tsx` — `/admin/reports` con filtros y exports CSV
+- `frontend/src/App.tsx` — rutas `/admin/*` con AdminProtectedRoute (requiere rrhh/admin_empresa/super_admin)
+- Build TypeScript sin errores
+
+**Rutas admin implementadas:**
+- `/admin/login` — login con validación de rol RRHH
+- `/admin/dashboard` — 6 KPI cards + gráfico de barras tendencia licencias
+- `/admin/reports` — exportaciones CSV de licencias y comunicaciones con filtros
+
+**Commits realizados:** Pendiente
+
+**Estado al cerrar:** Fase 8 completa. 149 tests pasando. Build exitoso. Todas las fases 1–8 completadas.
+
+---
 
 ### 2026-05-12 — Sesión 8
 **Duración aproximada:** 1 hora
