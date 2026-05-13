@@ -115,6 +115,126 @@ export interface AdjuntoComunicacion {
   signed_url?: string;
 }
 
+// Admin — Usuarios
+export type RolUsuario = "colaborador" | "rrhh" | "admin_empresa" | "super_admin" | "servicio_medico";
+export type EstadoUsuario = "pendiente" | "activo" | "suspendido" | "baja";
+
+export interface UserSummary {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  role: RolUsuario;
+  estado: EstadoUsuario;
+  cuil?: string;
+  legajo?: string;
+  sede_nombre?: string;
+  departamento_nombre?: string;
+  puesto_nombre?: string;
+  whatsapp_numero?: string;
+  fecha_ingreso?: string;
+  created_at: string;
+}
+
+export interface CreateUserRequest {
+  email: string;
+  first_name: string;
+  last_name: string;
+  cuil: string;
+  role: RolUsuario;
+  whatsapp_numero: string;
+  sede_id?: string;
+  departamento_id?: string;
+  puesto_id?: string;
+  legajo?: string;
+  fecha_ingreso?: string;
+  tipo_contrato?: "indefinido" | "determinado" | "eventual" | "pasantia";
+}
+
+// Admin — Periodos de liquidación
+export type EstadoPeriodo = "abierto" | "cerrado";
+
+export interface PeriodoLiquidacion {
+  id: string;
+  periodo: string;
+  descripcion?: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  fecha_limite_firma?: string;
+  estado: EstadoPeriodo;
+  total_recibos: number;
+  recibos_firmados: number;
+  created_at: string;
+}
+
+export interface CreatePeriodoRequest {
+  periodo: string;
+  descripcion?: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  fecha_limite_firma?: string;
+}
+
+export interface UploadPreviewItem {
+  cuil: string;
+  nombre: string;
+  archivo: string;
+  user_id?: string;
+}
+
+export interface UploadPreviewResponse {
+  job_id: string;
+  total_archivos: number;
+  preview: UploadPreviewItem[];
+}
+
+export interface UploadConfirmResponse {
+  distribuidos: number;
+  errores: string[];
+}
+
+export interface ReciboDashboardItem {
+  user_id: string;
+  full_name: string;
+  cuil: string;
+  legajo?: string;
+  sede_nombre?: string;
+  recibo_id?: string;
+  estado: "pendiente" | "entregado" | "firmado" | "sin_recibo";
+  firmado_at?: string;
+}
+
+// Admin — Comunicaciones
+export interface ComunicacionAdmin {
+  id: string;
+  asunto: string;
+  cuerpo: string;
+  tipo_segmento: "todos" | "sede" | "departamento" | "puesto" | "lista_custom";
+  requiere_confirmacion: boolean;
+  estado: "borrador" | "enviada" | "programada";
+  programado_at?: string;
+  enviado_at?: string;
+  total_destinatarios?: number;
+  created_at: string;
+}
+
+export interface NuevaComunicacion {
+  asunto: string;
+  cuerpo: string;
+  tipo_segmento: "todos" | "sede" | "departamento" | "puesto" | "lista_custom";
+  segmento_config?: Record<string, unknown>;
+  requiere_confirmacion: boolean;
+  programado_at?: string;
+}
+
+export interface MetricasComunicacion {
+  enviados: number;
+  entregados: number;
+  leidos: number;
+  confirmados: number;
+}
+
 // Paginación
 export interface Paginated<T> {
   data: T[];

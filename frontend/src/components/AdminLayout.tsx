@@ -4,11 +4,18 @@ import {
   BarChart2,
   LogOut,
   Users,
+  Calendar,
+  MessageSquare,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 const navItems = [
   { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/admin/licencias", label: "Licencias", icon: Calendar },
+  { to: "/admin/comunicaciones", label: "Comunicaciones", icon: MessageSquare },
+  { to: "/admin/recibos", label: "Recibos", icon: FileText },
+  { to: "/admin/usuarios", label: "Usuarios", icon: Users },
   { to: "/admin/reports", label: "Reportes", icon: BarChart2 },
 ];
 
