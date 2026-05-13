@@ -42,21 +42,24 @@ Nada.
 
 ### Próximo paso concreto
 ```
-Sin tarea definida. Posibles trabajos (orden de impacto):
-1. MFA (TOTP) — DT-002 — obligatorio antes de prod para admin/rrhh/médico
-2. Deploy a Render — push main + variables de entorno en Render
-3. Estructura org en admin portal (sedes, departamentos, puestos) — base para filtros de usuarios
-4. DT-005 — Job store de upload en Redis o tabla DB (en lugar de dict en memoria)
+Foco actual: levantar todo en DEV y validar el sistema completo.
+Deploy a Render: OUT OF SCOPE por ahora — se retoma cuando se decida el pase a producción.
+
+Pendientes ordenados por impacto en DEV:
+1. MFA (TOTP) — DT-002 — backend + frontend para admin/rrhh/médico
+2. DT-005 — Job store de upload de recibos en tabla DB (hoy es dict en memoria, no sobrevive restart)
+3. Estructura org en admin portal (sedes, departamentos, puestos) — el backend ya existe, falta el front
+4. Portal servicio médico — fichas, exámenes, aptitudes (front-office)
 ```
 
 ### Bloqueantes activos
 ```
-- Para activar WA en prod: configurar META_VERIFY_TOKEN + META_APP_SECRET en Render
+- Para activar WA en dev: configurar META_VERIFY_TOKEN + META_APP_SECRET en .env local + ngrok para webhook
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
 - supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql
 - ALLOWED_ORIGINS en .env local: ["http://localhost:5173","http://localhost:5174"]
 - uvicorn --reload NO detecta cambios en .env — reiniciar manualmente si se cambia
-- Deploy en Render nunca realizado — push a main pendiente
+- Deploy a Render: OUT OF SCOPE por ahora
 ```
 
 ### Notas de desarrollo local
