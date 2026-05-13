@@ -28,8 +28,8 @@ export function ActivatePage() {
     setLoading(true);
     try {
       const res = await authService.activate(token, firstName, cuil, password);
-      localStorage.setItem("access_token", res.access_token);
-      localStorage.setItem("refresh_token", res.refresh_token);
+      localStorage.setItem("access_token", res.access_token ?? "");
+      localStorage.setItem("refresh_token", res.refresh_token ?? "");
       await refreshUser();
       navigate("/employee/dashboard");
     } catch (err) {

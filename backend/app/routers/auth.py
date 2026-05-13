@@ -3,17 +3,33 @@ from supabase._async.client import AsyncClient
 
 from app.db.supabase import get_supabase
 from app.dependencies.auth import get_current_user
+from app.repositories.mfa_repository import MfaRepository
 from app.repositories.token_repository import TokenRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.auth import ActivateRequest, LoginRequest, LogoutRequest, RefreshRequest
+from app.schemas.auth import (
+    ActivateRequest,
+    LoginRequest,
+    LogoutRequest,
+    MfaChallengeRequest,
+    MfaDisableRequest,
+    MfaEnableRequest,
+    MfaSetupResponse,
+    MfaStatusResponse,
+    RefreshRequest,
+)
 from app.schemas.user import ActivateResponse, LoginResponse, RefreshResponse, UserMe
 from app.services.auth_service import AuthService
+from app.services.mfa_service import MfaService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _svc(db: AsyncClient = Depends(get_supabase)) -> AuthService:
     return AuthService(UserRepository(db), TokenRepository(db))
+
+
+def _mfa_svc(db: AsyncClient = Depends(get_supabase)) -> MfaService:
+    return MfaService(MfaRepository(db), UserRepository(db), TokenRepository(db))
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -39,3 +55,38 @@ async def activate(data: ActivateRequest, svc: AuthService = Depends(_svc)):
 @router.get("/me", response_model=UserMe)
 async def me(current_user: dict = Depends(get_current_user), svc: AuthService = Depends(_svc)):
     return await svc.get_me(current_user["id"])
+
+
+# ── MFA ────────────────────────────────────────────────────────────────────
+
+@router.post("/mfa/challenge", response_model=LoginResponse)
+async def mfa_challenge(data: MfaChallengeRequest, svc: MfaService = Depends(_mfa_svc)):
+    return await svc.challenge(data.mfa_token, data.code)
+
+
+@router.get("/mfa/setup", response_model=MfaSetupResponse)
+async def mfa_setup(
+    current_user: dict = Depends(get_current_user),
+    svc: MfaService = Depends(_mfa_svc),
+):
+    return svc.setup(str(current_user["id"]), current_user["email"])
+
+
+@router.post("/mfa/enable", response_model=MfaStatusResponse)
+async def mfa_enable(
+    data: MfaEnableRequest,
+    current_user: dict = Depends(get_current_user),
+    svc: MfaService = Depends(_mfa_svc),
+):
+    await svc.enable(str(current_user["id"]), data.code, data.secret)
+    return MfaStatusResponse(mfa_enabled=True)
+
+
+@router.post("/mfa/disable", response_model=MfaStatusResponse)
+async def mfa_disable(
+    data: MfaDisableRequest,
+    current_user: dict = Depends(get_current_user),
+    svc: MfaService = Depends(_mfa_svc),
+):
+    await svc.disable(str(current_user["id"]), data.code)
+    return MfaStatusResponse(mfa_enabled=False)

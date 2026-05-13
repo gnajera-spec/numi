@@ -43,3 +43,29 @@ class RefreshRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str
+
+
+# ── MFA ──────────────────────────────────────────────────────────────────────
+
+class MfaSetupResponse(BaseModel):
+    secret: str
+    qr_uri: str
+    backup_codes: list[str]
+
+
+class MfaEnableRequest(BaseModel):
+    code: str
+    secret: str
+
+
+class MfaChallengeRequest(BaseModel):
+    mfa_token: str
+    code: str
+
+
+class MfaDisableRequest(BaseModel):
+    code: str
+
+
+class MfaStatusResponse(BaseModel):
+    mfa_enabled: bool

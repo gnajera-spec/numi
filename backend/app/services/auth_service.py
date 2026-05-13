@@ -21,6 +21,17 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def _generate_mfa_token(user: dict, secret: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user["id"]),
+        "type": "mfa_challenge",
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
 def _generate_access_token(user: dict, secret: str) -> str:
     now = datetime.now(timezone.utc)
     payload = {
@@ -60,6 +71,10 @@ class AuthService:
 
         if user["estado"] != "activo":
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Cuenta inactiva")
+
+        if user.get("mfa_enabled"):
+            mfa_token = _generate_mfa_token(user, self._settings.secret_key)
+            return LoginResponse(mfa_required=True, mfa_token=mfa_token)
 
         token_pair = await self._issue_token_pair(user)
         await self._users.update_last_login(user["id"])

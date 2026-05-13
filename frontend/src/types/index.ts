@@ -12,6 +12,7 @@ export interface UserMe {
   departamento_nombre?: string;
   puesto_nombre?: string;
   sede_nombre?: string;
+  mfa_enabled?: boolean;
 }
 
 export interface TokenPair {
@@ -20,8 +21,21 @@ export interface TokenPair {
   token_type: string;
 }
 
-export interface LoginResponse extends TokenPair {
-  user: UserMe;
+export interface LoginResponse {
+  // Normal login
+  access_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  user?: UserMe;
+  // MFA challenge
+  mfa_required?: boolean;
+  mfa_token?: string;
+}
+
+export interface MfaSetupData {
+  secret: string;
+  qr_uri: string;
+  backup_codes: string[];
 }
 
 // Recibos

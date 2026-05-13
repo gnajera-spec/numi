@@ -33,8 +33,15 @@ class TokenPair(BaseModel):
     token_type: str = "bearer"
 
 
-class LoginResponse(TokenPair):
-    user: UserSummary
+class LoginResponse(BaseModel):
+    # Normal login
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str = "bearer"
+    user: UserSummary | None = None
+    # MFA challenge required
+    mfa_required: bool = False
+    mfa_token: str | None = None
 
 
 class ActivateResponse(TokenPair):
