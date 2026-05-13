@@ -29,7 +29,7 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-MFA (TOTP) — completado (DT-002 cerrado)
+Job store de upload en DB — completado (DT-005 cerrado)
 Última actualización: 2026-05-13
 Tests: 195 pasando
 Commits pendientes: ninguno
@@ -46,10 +46,8 @@ Foco actual: levantar todo en DEV y validar el sistema completo.
 Deploy a Render: OUT OF SCOPE por ahora — se retoma cuando se decida el pase a producción.
 
 Pendientes ordenados por impacto en DEV:
-1. supabase db push — aplicar migración 20260513000000_add_mfa_backup_codes.sql al proyecto remoto
-2. DT-005 — Job store de upload de recibos en tabla DB (hoy es dict en memoria, no sobrevive restart)
-3. Estructura org en admin portal (sedes, departamentos, puestos) — el backend ya existe, falta el front
-4. Portal servicio médico — fichas, exámenes, aptitudes (front-office)
+1. Estructura org en admin portal (sedes, departamentos, puestos) — backend listo, falta UI
+2. Portal servicio médico (fichas, exámenes, aptitudes) — front-office para rol servicio_medico
 ```
 
 ### Bloqueantes activos
@@ -71,10 +69,8 @@ Pendientes ordenados por impacto en DEV:
 
 ### Pendiente para próxima sesión
 ```
-1. supabase db push — migración MFA (add_mfa_backup_codes) al proyecto remoto
-2. DT-005 — Job store de upload de recibos en tabla DB (en lugar de dict en memoria)
-3. Estructura org en admin portal (sedes, departamentos, puestos) — backend listo, falta UI
-4. Portal servicio médico (fichas, exámenes, aptitudes) — front-office para rol servicio_medico
+1. Estructura org en admin portal (sedes, departamentos, puestos) — backend listo, falta UI
+2. Portal servicio médico (fichas, exámenes, aptitudes) — front-office para rol servicio_medico
 ```
 
 ---
@@ -132,7 +128,7 @@ Pendientes ordenados por impacto en DEV:
 | DT-002 | ~~MFA (TOTP) pendiente hasta antes de producción~~ | ✅ Implementado — TOTP + backup codes + 2-step login + ProfilePage setup | — | 2026-05-13 |
 | DT-003 | Firma digital Ley 25.506 fuera de scope v1.0 | Legal — implementar en v1.1 | Media | 2026-05-09 |
 | DT-004 | Reset de contraseña por email fuera de scope v1.0 | UX — flujo de recuperación manual | Baja | 2026-05-09 |
-| DT-005 | Job store de upload de recibos en `dict` en memoria — no sobrevive restart ni multi-proceso | Confiabilidad en deploy multi-worker | Alta | 2026-05-09 |
+| DT-005 | ~~Job store de upload de recibos en `dict` en memoria~~ | ✅ Resuelto — tabla `upload_jobs` + Supabase Storage temp paths (TTL 1h) | — | 2026-05-13 |
 | DT-006 | `POST /periodos/{id}/renotificar` implementado pero requiere `whatsapp_numero_raw` en usuario para enviar — pendiente de flujo de registro de wa_id | Funcionalidad parcial | Media | 2026-05-12 |
 | DT-007 | ~~`whatsapp_id_hash` en users no se puebla aún en `create_user`~~ | ✅ Resuelto en Fase 4 — se pueblan `whatsapp_id_hash` y `whatsapp_id_encrypted` al crear usuario | — | 2026-05-12 |
 
