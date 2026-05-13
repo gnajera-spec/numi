@@ -295,3 +295,64 @@ export interface TendenciaMes {
 export interface TendenciaLicencias {
   tendencia: TendenciaMes[];
 }
+
+// Organización — estructura org
+export interface Sede {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  direccion?: string;
+  ciudad?: string;
+  provincia?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedSedes {
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  items: Sede[];
+}
+
+export interface Departamento {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  padre_id?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  hijos: Departamento[];
+}
+
+export interface Puesto {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  descripcion?: string;
+  meses_vigencia_aptitud?: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedPuestos {
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  items: Puesto[];
+}
+
+export interface Convenio {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  descripcion?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}

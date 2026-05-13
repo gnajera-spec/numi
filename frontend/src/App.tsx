@@ -17,6 +17,7 @@ import { AdminLicenciasPage } from "./pages/admin/AdminLicenciasPage";
 import { AdminComunicacionesPage } from "./pages/admin/AdminComunicacionesPage";
 import { AdminRecibosPage } from "./pages/admin/AdminRecibosPage";
 import { AdminUsuariosPage } from "./pages/admin/AdminUsuariosPage";
+import { AdminOrganizacionPage } from "./pages/admin/AdminOrganizacionPage";
 import { useAuth } from "./contexts/AuthContext";
 
 const ADMIN_ROLES = ["rrhh", "admin_empresa", "super_admin"];
@@ -62,6 +63,7 @@ function AdminApp() {
         <Route path="comunicaciones" element={<AdminComunicacionesPage />} />
         <Route path="recibos" element={<AdminRecibosPage />} />
         <Route path="usuarios" element={<AdminUsuariosPage />} />
+        <Route path="organizacion" element={<AdminOrganizacionPage />} />
         <Route path="reports" element={<AdminReportsPage />} />
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>

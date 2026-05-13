@@ -7,6 +7,7 @@ import {
   Calendar,
   MessageSquare,
   FileText,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -16,6 +17,7 @@ const navItems = [
   { to: "/admin/comunicaciones", label: "Comunicaciones", icon: MessageSquare },
   { to: "/admin/recibos", label: "Recibos", icon: FileText },
   { to: "/admin/usuarios", label: "Usuarios", icon: Users },
+  { to: "/admin/organizacion", label: "Organización", icon: Building2 },
   { to: "/admin/reports", label: "Reportes", icon: BarChart2 },
 ];
 
