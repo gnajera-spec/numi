@@ -29,7 +29,7 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-Job store de upload en DB — completado (DT-005 cerrado)
+Sistema feature-complete v1.0 — todos los módulos implementados
 Última actualización: 2026-05-13
 Tests: 195 pasando
 Commits pendientes: ninguno
@@ -37,17 +37,17 @@ Commits pendientes: ninguno
 
 ### En este momento estoy trabajando en
 ```
-Nada.
+Nada — el sistema está feature-complete para v1.
 ```
 
 ### Próximo paso concreto
 ```
-Foco actual: levantar todo en DEV y validar el sistema completo.
-Deploy a Render: OUT OF SCOPE por ahora — se retoma cuando se decida el pase a producción.
+El sistema está feature-complete. Las opciones de próximos pasos son:
 
-Pendientes ordenados por impacto en DEV:
-1. Estructura org en admin portal (sedes, departamentos, puestos) — backend listo, falta UI
-2. Portal servicio médico (fichas, exámenes, aptitudes) — front-office para rol servicio_medico
+1. Deploy a Render (producción) — configurar variables de entorno, push main
+2. Validación end-to-end en DEV — correr seed_demo.py y probar todos los flujos
+3. WhatsApp en DEV — configurar META_VERIFY_TOKEN + META_APP_SECRET + ngrok
+4. Deuda técnica menor — DT-003 (firma digital), DT-004 (reset contraseña)
 ```
 
 ### Bloqueantes activos
@@ -69,8 +69,10 @@ Pendientes ordenados por impacto en DEV:
 
 ### Pendiente para próxima sesión
 ```
-1. Estructura org en admin portal (sedes, departamentos, puestos) — backend listo, falta UI
-2. Portal servicio médico (fichas, exámenes, aptitudes) — front-office para rol servicio_medico
+Sistema feature-complete. Opciones:
+1. Deploy a Render (producción)
+2. Validación end-to-end en DEV con seed_demo.py
+3. WhatsApp en DEV (ngrok + META tokens)
 ```
 
 ---
@@ -223,9 +225,10 @@ frontend/src/
     pages/admin/AdminRecibosPage.tsx        ✅ /admin/recibos — períodos + upload ZIP/PDF + preview + confirm + dashboard recibos
     pages/admin/AdminUsuariosPage.tsx       ✅ /admin/usuarios — lista + search + crear + suspend/reactivate/baja + reinvitar
 
-  ⏳ Portal RRHH SIN IMPLEMENTAR:
-    - Gestión de estructura org (sedes, departamentos, puestos) — opcional v1
-    - Servicio médico (fichas, exámenes, aptitudes) — acceso exclusivo servicio_medico
+  Portal médico (/admin/medico/*):
+    pages/admin/AdminMedicoFichasPage.tsx      ✅ /admin/medico/fichas — lista + modal detalle (ficha, exámenes, aptitudes, vacunaciones)
+    pages/admin/AdminMedicoAccidentesPage.tsx  ✅ /admin/medico/accidentes — lista + crear + actualizar estado/ART
+    pages/admin/AdminMedicoReportesPage.tsx    ✅ /admin/medico/reportes — absentismo + aptitudes por vencer
 ```
 
 ### Módulos del backend — estado de implementación
