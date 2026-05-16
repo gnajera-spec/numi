@@ -5,12 +5,20 @@ from supabase._async.client import AsyncClient
 
 from app.db.supabase import get_supabase
 from app.dependencies.auth import get_current_user, require_role
+from app.repositories.aprobacion_solicitud_repository import AprobacionSolicitudRepository
+from app.repositories.colaborador_repository import ColaboradorRepository
+from app.repositories.flujo_aprobacion_repository import FlujoAprobacionRepository
 from app.repositories.politica_licencia_repository import PoliticaLicenciaRepository
 from app.repositories.saldo_licencia_repository import SaldoLicenciaRepository
 from app.repositories.solicitud_licencia_repository import SolicitudLicenciaRepository
 from app.repositories.tipo_licencia_repository import TipoLicenciaRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
+from app.schemas.flujos_aprobacion import (
+    AprobacionSolicitudOut,
+    AprobarPasoRequest,
+    RechazarPasoRequest,
+)
 from app.schemas.licencias import (
     AprobarSolicitudRequest,
     CreatePoliticaRequest,
@@ -37,6 +45,9 @@ def _get_service(db: AsyncClient = Depends(get_supabase)) -> LicenciaService:
         saldo_repo=SaldoLicenciaRepository(db),
         user_repo=UserRepository(db),
         wa_config_repo=WhatsappConfigRepository(db),
+        flujo_repo=FlujoAprobacionRepository(db),
+        aprobacion_repo=AprobacionSolicitudRepository(db),
+        colaborador_repo=ColaboradorRepository(db),
     )
 
 
@@ -57,15 +68,6 @@ async def create_tipo(
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.create_tipo(str(current_user["tenant_id"]), body)
-
-
-@router.delete("/tipos/{tipo_id}", status_code=204)
-async def delete_tipo(
-    tipo_id: UUID,
-    current_user: dict = Depends(require_role("admin_empresa", "super_admin", "rrhh")),
-    svc: LicenciaService = Depends(_get_service),
-):
-    await svc.delete_tipo(str(tipo_id), str(current_user["tenant_id"]))
 
 
 # ── Políticas ─────────────────────────────────────────────────────────────────
@@ -96,7 +98,7 @@ async def list_solicitudes(
     user_id: UUID | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: dict = Depends(require_role("rrhh", "servicio_medico", "admin_empresa")),
+    current_user: dict = Depends(require_role("rrhh")),
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.list_solicitudes(
@@ -161,7 +163,7 @@ async def get_solicitud(
 async def aprobar_solicitud(
     solicitud_id: UUID,
     body: AprobarSolicitudRequest,
-    current_user: dict = Depends(require_role("rrhh", "servicio_medico", "admin_empresa")),
+    current_user: dict = Depends(require_role("rrhh")),
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.aprobar_solicitud(solicitud_id, current_user, body)
@@ -171,7 +173,7 @@ async def aprobar_solicitud(
 async def rechazar_solicitud(
     solicitud_id: UUID,
     body: RechazarSolicitudRequest,
-    current_user: dict = Depends(require_role("rrhh", "servicio_medico", "admin_empresa")),
+    current_user: dict = Depends(require_role("rrhh")),
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.rechazar_solicitud(solicitud_id, current_user, body)
@@ -184,3 +186,44 @@ async def cancelar_solicitud(
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.cancelar_solicitud(solicitud_id, current_user)
+
+
+# ── Flujo: paso-based endpoints ───────────────────────────────────────────────
+
+@router.get("/pendientes-mi-aprobacion", response_model=PaginatedSolicitudes)
+async def pendientes_mi_aprobacion(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+    svc: LicenciaService = Depends(_get_service),
+):
+    return await svc.pendientes_mi_aprobacion(current_user, page=page, page_size=page_size)
+
+
+@router.post("/solicitudes/{solicitud_id}/aprobar-paso", response_model=SolicitudLicenciaOut)
+async def aprobar_paso(
+    solicitud_id: UUID,
+    body: AprobarPasoRequest,
+    current_user: dict = Depends(get_current_user),
+    svc: LicenciaService = Depends(_get_service),
+):
+    return await svc.aprobar_paso(solicitud_id, current_user, body)
+
+
+@router.post("/solicitudes/{solicitud_id}/rechazar-paso", response_model=SolicitudLicenciaOut)
+async def rechazar_paso(
+    solicitud_id: UUID,
+    body: RechazarPasoRequest,
+    current_user: dict = Depends(get_current_user),
+    svc: LicenciaService = Depends(_get_service),
+):
+    return await svc.rechazar_paso(solicitud_id, current_user, body)
+
+
+@router.get("/solicitudes/{solicitud_id}/historial-aprobacion", response_model=list[AprobacionSolicitudOut])
+async def historial_aprobacion(
+    solicitud_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    svc: LicenciaService = Depends(_get_service),
+):
+    return await svc.get_historial_aprobacion(solicitud_id, current_user)

@@ -7,8 +7,7 @@ from supabase._async.client import AsyncClient
 _SELECT_FULL = (
     "*, "
     "tipos_licencia(id, codigo, nombre), "
-    "documentos_solicitud(*), "
-    "revisado_por_user:users!revisado_por(id, first_name, last_name)"
+    "documentos_solicitud(*)"
 )
 
 
@@ -28,16 +27,14 @@ class SolicitudLicenciaRepository:
             "comentario_empleado": data.get("comentario_empleado"),
             "canal": data.get("canal", "portal"),
         }
-        for field in ("medico_nombre", "medico_apellido", "medico_matricula", "dias_reposo"):
-            if data.get(field) is not None:
-                payload[field] = data[field]
         res = await (
             self._db.table("solicitudes_licencia")
             .insert(payload)
             .select(_SELECT_FULL)
+            .single()
             .execute()
         )
-        return res.data[0]
+        return res.data
 
     async def get(self, solicitud_id: str | UUID) -> dict | None:
         res = await (
@@ -142,6 +139,20 @@ class SolicitudLicenciaRepository:
             .update(payload)
             .eq("id", str(solicitud_id))
             .select(_SELECT_FULL)
+            .single()
             .execute()
         )
-        return res.data[0]
+        return res.data
+
+    async def update(self, data: dict) -> dict | None:
+        """Generic update by id. data must include 'id'."""
+        solicitud_id = data.pop("id")
+        res = await (
+            self._db.table("solicitudes_licencia")
+            .update(data)
+            .eq("id", str(solicitud_id))
+            .select(_SELECT_FULL)
+            .single()
+            .execute()
+        )
+        return res.data
