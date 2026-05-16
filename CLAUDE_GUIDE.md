@@ -48,18 +48,13 @@ Módulos nuevos implementados pero NO commiteados (trabajo en progreso):
 
 ### Próximo paso concreto
 ```
-1. URGENTE — Commitear el trabajo no commiteado en bloques semánticos
-2. Agregar tests para los nuevos módulos (invitaciones, smtp)
-3. Aplicar migración backend/migrations/004_invitaciones_smtp.sql en Supabase remoto
-4. Aplicar supabase/migrations/20260515000000_add_roles_array_to_users.sql
-5. Validación end-to-end en DEV con seed_demo.py
+1. Commitear el trabajo no commiteado de Fase 9 (frontend + nuevos módulos backend)
+2. Validación end-to-end en DEV con seed_demo.py
 ```
 
 ### Bloqueantes activos
 ```
-- Trabajo no commiteado: 57 archivos modificados + módulos nuevos sin tests
-- backend/migrations/004_invitaciones_smtp.sql NO es una migración Supabase CLI — aplicar manualmente con execute_sql o mover a supabase/migrations/
-- supabase/migrations/20260515000000_add_roles_array_to_users.sql pendiente de push
+- Trabajo no commiteado de Fase 9: frontend refactors, nuevos módulos backend sin commitear aún
 - Para activar WA en dev: configurar META_VERIFY_TOKEN + META_APP_SECRET en .env local + ngrok para webhook
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
 - ALLOWED_ORIGINS en .env local: ["http://localhost:5173","http://localhost:5174"]
@@ -359,10 +354,7 @@ META_APP_SECRET=               # App Secret de Meta para validar firma HMAC-SHA2
 20260513000000_add_mfa_backup_codes.sql      — tabla mfa_backup_codes (user_id, code_hash, used_at)
 20260513010000_add_upload_jobs_table.sql     — tabla upload_jobs (id, tenant_id, periodo_id, metadata JSONB, expires_at)
 20260515000000_add_roles_array_to_users.sql  — columna roles text[] en users (multi-rol), inicializada desde role existente
-
-backend/migrations/004_invitaciones_smtp.sql — 🔄 NO aplicada en remoto — tabla invitaciones (token, cuil, email, TTL 7d)
-                                               + tabla smtp_config (host, port, username, password_enc, tls, from_email)
-                                               ⚠️ Mover a supabase/migrations/ y renombrar con timestamp antes de pushear
+20260515010000_add_invitaciones_smtp.sql     — tabla invitaciones (token, cuil, email, TTL 7d) + tabla smtp_config
 ```
 
 ### Storage Supabase
