@@ -29,35 +29,41 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-Sistema feature-complete v1.0 — todos los módulos implementados
-Última actualización: 2026-05-13
-Tests: 195 pasando
-Commits pendientes: ninguno
+v1.1 — módulos de invitaciones + SMTP + superadmin panel en progreso
+Última actualización: 2026-05-15
+Tests: 195 pasando (nuevos módulos sin tests aún)
+Commits pendientes: MUCHOS — 57 archivos modificados + nuevos módulos sin commitear
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada — el sistema está feature-complete para v1.
+Módulos nuevos implementados pero NO commiteados (trabajo en progreso):
+- Invitaciones: onboarding self-service por email (individual + lote + CSV)
+- SMTP: configuración por tenant (custom o servidor de NUMI)
+- SuperAdmin portal: /superadmin/* con gestión de tenants y roles multi-usuario
+- Onboarding: página pública /onboarding/:token para colaboradores invitados
+- AdminTiposLicencias: gestión de tipos de licencia desde admin (/admin/tipos-licencias)
+- Migración: roles[] array en users + tabla invitaciones + tabla smtp_config (en backend/migrations/)
 ```
 
 ### Próximo paso concreto
 ```
-El sistema está feature-complete. Las opciones de próximos pasos son:
-
-1. Deploy a Render (producción) — configurar variables de entorno, push main
-2. Validación end-to-end en DEV — correr seed_demo.py y probar todos los flujos
-3. WhatsApp en DEV — configurar META_VERIFY_TOKEN + META_APP_SECRET + ngrok
-4. Deuda técnica menor — DT-003 (firma digital), DT-004 (reset contraseña)
+1. URGENTE — Commitear el trabajo no commiteado en bloques semánticos
+2. Agregar tests para los nuevos módulos (invitaciones, smtp)
+3. Aplicar migración backend/migrations/004_invitaciones_smtp.sql en Supabase remoto
+4. Aplicar supabase/migrations/20260515000000_add_roles_array_to_users.sql
+5. Validación end-to-end en DEV con seed_demo.py
 ```
 
 ### Bloqueantes activos
 ```
+- Trabajo no commiteado: 57 archivos modificados + módulos nuevos sin tests
+- backend/migrations/004_invitaciones_smtp.sql NO es una migración Supabase CLI — aplicar manualmente con execute_sql o mover a supabase/migrations/
+- supabase/migrations/20260515000000_add_roles_array_to_users.sql pendiente de push
 - Para activar WA en dev: configurar META_VERIFY_TOKEN + META_APP_SECRET en .env local + ngrok para webhook
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
-- supabase db push pendiente con migración 20260512200000_add_licencias_schema.sql
 - ALLOWED_ORIGINS en .env local: ["http://localhost:5173","http://localhost:5174"]
 - uvicorn --reload NO detecta cambios en .env — reiniciar manualmente si se cambia
-- Deploy a Render: OUT OF SCOPE por ahora
 ```
 
 ### Notas de desarrollo local
@@ -65,14 +71,16 @@ El sistema está feature-complete. Las opciones de próximos pasos son:
 - seed_demo.py en backend/ para seed de datos de prueba (no commitear — tiene service_role_key)
   Credenciales demo: colab@demo.com / Colab1234 | admin@demo.com / Admin1234
 - Backend corre en :8000, frontend en :5173 o :5174 según disponibilidad
+- reset_superadmin.py en backend/ — script de utilidad (no commitear)
+- iniciar_backend.command — script de conveniencia para iniciar backend en Mac (no commitear)
 ```
 
 ### Pendiente para próxima sesión
 ```
-Sistema feature-complete. Opciones:
-1. Deploy a Render (producción)
-2. Validación end-to-end en DEV con seed_demo.py
-3. WhatsApp en DEV (ngrok + META tokens)
+1. Commitear módulos nuevos (invitaciones, smtp, superadmin, onboarding, tipos-licencias)
+2. Escribir tests para invitacion_service y smtp_service
+3. Aplicar migraciones pendientes en Supabase remoto
+4. Opciones adicionales: Deploy a Render, validación end-to-end en DEV, WhatsApp con ngrok
 ```
 
 ---
@@ -90,6 +98,7 @@ Sistema feature-complete. Opciones:
 | Fase 6 | Portal Web del colaborador | ✅ Completada | 2026-05-12 |
 | Fase 7 | Servicio Médico | ✅ Completada | 2026-05-12 |
 | Fase 8 | Reportes + Dashboard RRHH | ✅ Completada | 2026-05-12 |
+| Fase 9 | Invitaciones + SMTP + SuperAdmin panel | 🔄 En progreso (sin commit, sin tests) | 2026-05-15 |
 
 ---
 
@@ -196,11 +205,19 @@ frontend/src/
     Spinner.tsx                   ✅ Spinner animado
     TrendChart.tsx                ✅ Gráfico de barras recharts (tendencia licencias)
   services/
-    authService.ts                ✅ login, activate, refresh, logout, me
+    authService.ts                ✅ login, activate, refresh, logout, me, mfaSetup, mfaEnable, mfaDisable, mfaChallenge
     recibosService.ts             ✅ list, get (signed URL), firmar
     licenciasService.ts           ✅ tipos, mis-solicitudes, saldo, crear, cancelar, subirDocumento
     comunicacionesService.ts      ✅ list, confirmar
     reportesService.ts            ✅ getDashboard, getHeadcount, getTendenciaLicencias, downloadCsv
+    adminLicenciasService.ts      ✅ listSolicitudes, aprobar, rechazar
+    adminComunicacionesService.ts ✅ list, create, get, enviar, reenviar
+    adminRecibosService.ts        ✅ listPeriodos, createPeriodo, upload, confirmUpload, getRecibos, downloadCsv
+    adminUsuariosService.ts       ✅ list, create, invite, suspend, reactivate, baja
+    organizacionService.ts        ✅ sedes (list/create/toggle), departamentos (list/create/toggle), puestos (list/create/toggle), convenios (list/create)
+    medicoService.ts              ✅ fichas (get/update), exámenes (list/create), vacunaciones (list/create), aptitudes (list/create), accidentes (list/create/update), reportes
+    superAdminService.ts          🔄 listTenants, createTenant, getTenant, updateTenant, listTenantUsers, setTenantUserRoles
+    smtpConfigService.ts          🔄 get, save, test
 
   Portal colaborador (/employee/*):
     pages/LoginPage.tsx           ✅ /employee/login
@@ -224,6 +241,17 @@ frontend/src/
     pages/admin/AdminComunicacionesPage.tsx ✅ /admin/comunicaciones — lista + crear borrador + enviar + reenviar
     pages/admin/AdminRecibosPage.tsx        ✅ /admin/recibos — períodos + upload ZIP/PDF + preview + confirm + dashboard recibos
     pages/admin/AdminUsuariosPage.tsx       ✅ /admin/usuarios — lista + search + crear + suspend/reactivate/baja + reinvitar
+    pages/admin/AdminOrganizacionPage.tsx   ✅ /admin/organizacion — 4 tabs (Sedes, Departamentos árbol, Puestos, Convenios), create modal + toggle activo/inactivo
+    pages/admin/AdminSmtpConfigPage.tsx     🔄 /admin/configuracion/smtp — toggle NUMI vs custom SMTP, form, test conexión
+    pages/admin/AdminTiposLicenciasPage.tsx 🔄 /admin/tipos-licencias — lista, crear, eliminar tipos de licencia
+
+  Portal colaborador (público):
+    pages/OnboardingPage.tsx               🔄 /onboarding/:token — formulario self-service para colaboradores invitados
+
+  Portal SuperAdmin (/superadmin/*):
+    components/SuperAdminLayout.tsx        🔄 Sidebar NUMI branding + nav (Empresas) + logout
+    pages/superadmin/SuperAdminLoginPage.tsx  🔄 /superadmin/login — login para super_admin
+    pages/superadmin/SuperAdminTenantsPage.tsx 🔄 /superadmin/tenants — gestión global de tenants: list/search/filter, create, edit, manage users con roles múltiples
 
   Portal médico (/admin/medico/*):
     pages/admin/AdminMedicoFichasPage.tsx      ✅ /admin/medico/fichas — lista + modal detalle (ficha, exámenes, aptitudes, vacunaciones)
@@ -243,6 +271,8 @@ app/routers/
   medico.py        ✅ GET /medico/fichas, GET|PUT /medico/fichas/{user_id}, GET|POST /medico/examenes/{user_id}, GET|POST /medico/vacunaciones/{user_id}, GET|POST /medico/aptitudes/{user_id}, GET|POST /medico/accidentes, PATCH /medico/accidentes/{id}, GET /medico/reportes/absentismo, GET /medico/reportes/aptitudes-por-vencer
   reportes.py      ✅ GET /reportes/dashboard, GET /reportes/headcount, GET /reportes/licencias, GET /reportes/export/licencias, GET /reportes/export/comunicaciones
   tenants.py       ✅ GET|POST /tenants, GET|PATCH /tenants/{id}, GET /tenants/me, PATCH /tenants/me/branding, GET|POST /sedes, PATCH /sedes/{id}, GET|POST /departamentos, PATCH /departamentos/{id}, GET|POST /puestos, PATCH /puestos/{id}, GET|POST /convenios
+  invitaciones.py  🔄 POST /admin/invitaciones/individual, /admin/invitaciones/lote, /admin/invitaciones/lote/csv, GET /onboarding/{token}, POST /onboarding/{token}/completar
+  smtp_config.py   🔄 GET /admin/configuracion/smtp, PUT /admin/configuracion/smtp, POST /admin/configuracion/smtp/test
 ```
 
 ### Repositorios implementados
@@ -274,6 +304,26 @@ app/repositories/
   departamento_repository.py               ✅ list, get, get_by_nombre, count_niveles, create, update
   puesto_repository.py                     ✅ list, get, get_by_nombre, create, update
   convenio_repository.py                   ✅ list, get_by_nombre, create
+  upload_job_repository.py                 ✅ create, get, delete — jobs en DB con TTL 1h (reemplaza dict en memoria, DT-005)
+  mfa_repository.py                        ✅ get_secret, save_secret, is_enabled, save_backup_codes, use_backup_code
+  invitacion_repository.py                 🔄 get_by_token, get_by_cuil_and_tenant, create, mark_completed, list_by_tenant
+  smtp_config_repository.py                🔄 get_by_tenant, upsert
+```
+
+### Servicios del backend
+```
+app/services/
+  auth_service.py     ✅ login (2-step si MFA activo), refresh, logout, activate, get_me
+  mfa_service.py      ✅ setup_totp (genera QR), enable, disable, challenge — TOTP via pyotp + backup codes
+  recibo_service.py   ✅ períodos, upload, confirm, distribuir, firmar, CSV
+  licencia_service.py ✅ tipos, políticas, solicitudes + notificaciones WA best-effort
+  comunicacion_service.py ✅ create, list, enviar (segmentado), reenviar, confirmar + dispatch WA
+  medico_service.py   ✅ fichas (AES-256), exámenes (encriptado + storage), vacunaciones, aptitudes, accidentes, reportes
+  reporte_service.py  ✅ dashboard KPIs (asyncio.gather), headcount, tendencia, exports CSV
+  tenant_service.py   ✅ CRUD tenants + árbol departamentos (_build_tree) + validaciones
+  whatsapp_service.py ✅ FSM (idle→menu→recibos/licencias/comunicaciones), verify_webhook, HMAC, notify
+  invitacion_service.py 🔄 invitar_individual, invitar_lote, parse_csv, get_token_info, completar_onboarding
+  smtp_service.py    🔄 get_config, send_invitation (template email), test_connection — soporta TLS/SSL, desencripta password
 ```
 
 ### Variables de entorno requeridas
@@ -306,6 +356,13 @@ META_APP_SECRET=               # App Secret de Meta para validar firma HMAC-SHA2
 20260512220000_add_medico_schema.sql         — fichas_medicas, examenes_medicos, vacunaciones,
                                                aptitudes_laborales, accidentes_trabajo,
                                                documentos_medicos, storage bucket 'documentos-medicos'
+20260513000000_add_mfa_backup_codes.sql      — tabla mfa_backup_codes (user_id, code_hash, used_at)
+20260513010000_add_upload_jobs_table.sql     — tabla upload_jobs (id, tenant_id, periodo_id, metadata JSONB, expires_at)
+20260515000000_add_roles_array_to_users.sql  — columna roles text[] en users (multi-rol), inicializada desde role existente
+
+backend/migrations/004_invitaciones_smtp.sql — 🔄 NO aplicada en remoto — tabla invitaciones (token, cuil, email, TTL 7d)
+                                               + tabla smtp_config (host, port, username, password_enc, tls, from_email)
+                                               ⚠️ Mover a supabase/migrations/ y renombrar con timestamp antes de pushear
 ```
 
 ### Storage Supabase
@@ -330,6 +387,30 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 
 ## LOG DE SESIONES
 
+### 2026-05-15 — Sesión 16
+**Duración aproximada:** En progreso
+**Objetivo de la sesión:** Actualizar CLAUDE_GUIDE + documentar Fase 9
+
+**Completado:**
+- CLAUDE_GUIDE actualizado con sesiones 12-15 faltantes (DT-005, MFA, Org UI, Medical Portal)
+- Nuevos módulos documentados: invitaciones, smtp, superadmin, onboarding, tipos-licencias
+- Nuevas migraciones documentadas (roles array, invitaciones+smtp)
+- Estado actual actualizado para reflejar trabajo sin commitear
+
+**Trabajo detectado sin commitear (Fase 9):**
+- Backend: invitacion_service + invitacion_repository, smtp_service + smtp_config_repository, schemas, 2 routers (ya registrados en main.py)
+- Frontend: OnboardingPage, AdminSmtpConfigPage, AdminTiposLicenciasPage, SuperAdminLayout, SuperAdminLoginPage, SuperAdminTenantsPage, superAdminService, smtpConfigService
+- Migraciones: 20260515000000_add_roles_array_to_users.sql, backend/migrations/004_invitaciones_smtp.sql
+- 57 archivos modificados adicionales (refactors de UI, Badge, NumiLogo, etc.)
+- Sin tests para nuevos módulos
+
+**Commit:** Pendiente
+
+**Estado al cerrar:** CLAUDE_GUIDE actualizado. Fase 9 documentada. Próximo: commitear trabajo no commiteado + tests.
+
+---
+
+
 ### 2026-05-13 — Sesión 11
 **Duración aproximada:** 45 min
 **Objetivo de la sesión:** Front-office RRHH — portal admin completo
@@ -350,6 +431,82 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 - Build TypeScript sin errores (2330 módulos)
 
 **Estado al cerrar:** Portal RRHH completo. 4 módulos de front-office implementados. Próximo: MFA o Deploy.
+
+---
+
+### 2026-05-13 — Sesión 12
+**Duración aproximada:** 30 min
+**Objetivo de la sesión:** DT-005 — reemplazar job store en memoria por DB + Storage
+
+**Completado:**
+- Migración `20260513010000_add_upload_jobs_table.sql` — tabla `upload_jobs` con TTL 1h
+- `app/repositories/upload_job_repository.py` — create, get, delete
+- `app/services/recibo_service.py` — upload ahora guarda PDFs en `temp/{job_id}/` en Supabase Storage; confirm descarga de temp, mueve a path final, limpia temp
+- Tests actualizados en `tests/services/test_recibo_service.py`
+- DT-005 resuelto: job store ya no es process-scoped, sobrevive reinicios y múltiples workers
+
+**Commit:** `1dfa8e9` — fix: replace in-memory upload job store with DB + Storage (DT-005)
+
+**Estado al cerrar:** DT-005 resuelto. Próximo: MFA.
+
+---
+
+### 2026-05-13 — Sesión 13
+**Duración aproximada:** 45 min
+**Objetivo de la sesión:** DT-002 — MFA TOTP
+
+**Completado:**
+- Migración `20260513000000_add_mfa_backup_codes.sql` — tabla `mfa_backup_codes`
+- `app/repositories/mfa_repository.py` — get/save secret, is_enabled, save/use backup codes
+- `app/services/mfa_service.py` — setup_totp (genera QR + secret), enable (valida TOTP + genera 10 backup codes), disable (requiere TOTP), challenge (acepta TOTP o backup code)
+- `app/routers/auth.py` — 4 nuevos endpoints: GET /auth/mfa/setup, POST /auth/mfa/enable, /auth/mfa/disable, /auth/mfa/challenge
+- `app/schemas/auth.py` — MfaSetupResponse, MfaEnableRequest, MfaChallengeRequest, MfaChallengeResponse
+- `pyotp` + `qrcode[pil]` agregados a requirements
+- Login: flujo 2-step — si MFA activo, /auth/login retorna `mfa_required=true` + `mfa_token` (JWT corto de 5min); frontend llama /auth/mfa/challenge para obtener el JWT final
+- Frontend: `LoginPage.tsx` + `AdminLoginPage.tsx` — 2 pasos inline (email/pass → código TOTP)
+- Frontend: `ProfilePage.tsx` — sección MFA con setup QR + backup codes + disable
+- `frontend/src/services/authService.ts` + `frontend/src/types/index.ts` actualizados
+- 15 tests nuevos (8 service + 7 router), 195 totales pasando
+
+**Commit:** `e8867ea` — feat: implement MFA TOTP authentication (DT-002)
+
+**Estado al cerrar:** DT-002 resuelto. 195 tests pasando. Próximo: Admin Org Structure UI.
+
+---
+
+### 2026-05-13 — Sesión 14
+**Duración aproximada:** 30 min
+**Objetivo de la sesión:** Admin Org Structure UI — página /admin/organizacion
+
+**Completado:**
+- `frontend/src/services/organizacionService.ts` — sedes (list/create/toggle), departamentos (list/create/toggle), puestos (list/create/toggle), convenios (list/create)
+- `frontend/src/pages/admin/AdminOrganizacionPage.tsx` — 4 tabs (Sedes, Departamentos, Puestos, Convenios); departamentos renderiza árbol anidado con expand/collapse (máx. 3 niveles); cada tab tiene create modal + toggle activo/inactivo
+- `AdminLayout.tsx` — nav link "Organización" agregado
+- `App.tsx` — ruta `/admin/organizacion`
+- `frontend/src/types/index.ts` — tipos SedeOut, DepartamentoOut (árbol), PuestoOut, ConvenioOut
+
+**Commit:** `f383a98` — feat: implement admin org structure UI (sedes, departamentos, puestos, convenios)
+
+**Estado al cerrar:** UI de estructura organizacional completa. Próximo: Medical Portal UI.
+
+---
+
+### 2026-05-13 — Sesión 15
+**Duración aproximada:** 45 min
+**Objetivo de la sesión:** Medical Portal UI — /admin/medico/*
+
+**Completado:**
+- `frontend/src/services/medicoService.ts` — fichas (get/update), exámenes (list/create), vacunaciones (list/create), aptitudes (list/create), accidentes (list/create/update), reportes (absentismo, aptitudes por vencer)
+- `frontend/src/pages/admin/AdminMedicoFichasPage.tsx` — lista de fichas con search + modal detalle con 4 tabs (ficha editable, exámenes, aptitudes, vacunaciones)
+- `frontend/src/pages/admin/AdminMedicoAccidentesPage.tsx` — lista con filtro estado + create modal + update estado/ART
+- `frontend/src/pages/admin/AdminMedicoReportesPage.tsx` — absentismo por departamento + aptitudes por vencer con horizonte configurable
+- `AdminLayout.tsx` — nav médico solo visible para roles `servicio_medico`, `admin_empresa`, `super_admin`; `AdminLoginPage.tsx` redirige `servicio_medico` a `/admin/medico/fichas`
+- `App.tsx` — rutas `/admin/medico/*`
+- `frontend/src/types/index.ts` — tipos FichaMedica, ExamenMedico, AptitudLaboral, Vacunacion, AccidenteTrabajo, ReporteAbsentismo, AptitudPorVencer
+
+**Commit:** `283a86c` — feat: implement medical portal (fichas, accidentes, reportes)
+
+**Estado al cerrar:** Sistema feature-complete v1.0. 195 tests pasando. Build sin errores.
 
 ---
 
