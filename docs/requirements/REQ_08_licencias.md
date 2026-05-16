@@ -1,6 +1,6 @@
 # REQ_08 — Módulo de Gestión de Licencias
 
-**Estado:** ⏳ Pendiente  
+**Estado:** 🔄 En curso  
 **Módulo:** licencias  
 **Prioridad:** Alta  
 **Referencia AF:** Sección 4.5  
@@ -20,48 +20,48 @@ Gestión del ciclo completo de solicitud, aprobación, seguimiento y control de 
 
 | ID | Descripción | Estado |
 |----|-------------|--------|
-| RF-08-01 | Catálogo base con tipos predefinidos (ver tabla de tipos) | ⏳ |
-| RF-08-02 | El Administrador puede agregar tipos de licencia personalizados | ⏳ |
-| RF-08-03 | El Administrador puede definir días disponibles y aprobador por tipo | ⏳ |
-| RF-08-04 | El catálogo es configurable por empresa según convenio colectivo | ⏳ |
+| RF-08-01 | Catálogo base con tipos predefinidos (ver tabla de tipos) | ✅ |
+| RF-08-02 | El Administrador puede agregar tipos de licencia personalizados | ✅ |
+| RF-08-03 | El Administrador puede definir días disponibles y aprobador por tipo | ✅ |
+| RF-08-04 | El catálogo es configurable por empresa según convenio colectivo | ✅ |
 
 ### 4.5.2 — Flujo de Solicitud (Colaborador vía WhatsApp)
 
 | ID | Descripción | Estado |
 |----|-------------|--------|
-| RF-08-05 | El colaborador inicia la solicitud desde el menú WhatsApp ("Solicitar licencia") | ⏳ |
-| RF-08-06 | El bot presenta el menú de tipos de licencia con botones interactivos | ⏳ |
-| RF-08-07 | El bot solicita fecha de inicio y fecha de fin (o cantidad de días) | ⏳ |
-| RF-08-08 | Si el tipo requiere certificado, el bot solicita adjuntar imagen o PDF | ⏳ |
-| RF-08-09 | El bot muestra resumen de la solicitud y pide confirmación explícita | ⏳ |
-| RF-08-10 | Al confirmar, la solicitud queda en estado PENDIENTE y el sistema notifica al aprobador | ⏳ |
-| RF-08-11 | El colaborador recibe acuse de recibo con número de solicitud | ⏳ |
+| RF-08-05 | El colaborador inicia la solicitud desde el menú WhatsApp ("Solicitar licencia") | ✅ |
+| RF-08-06 | El bot presenta el menú de tipos de licencia con botones interactivos | ✅ |
+| RF-08-07 | El bot solicita fecha de inicio y fecha de fin (o cantidad de días) | ✅ |
+| RF-08-08 | Si el tipo requiere certificado, el bot solicita adjuntar imagen o PDF | ✅ |
+| RF-08-09 | El bot muestra resumen de la solicitud y pide confirmación explícita | ✅ |
+| RF-08-10 | Al confirmar, la solicitud queda en estado PENDIENTE y el sistema notifica al aprobador | ✅ |
+| RF-08-11 | El colaborador recibe acuse de recibo con número de solicitud | ✅ |
 
 ### 4.5.3 — Flujo de Aprobación (Back-office)
 
 | ID | Descripción | Estado |
 |----|-------------|--------|
-| RF-08-12 | El responsable accede al dashboard de licencias pendientes | ⏳ |
-| RF-08-13 | El responsable puede revisar la solicitud y los documentos adjuntos | ⏳ |
-| RF-08-14 | El responsable puede aprobar o rechazar con comentario opcional | ⏳ |
-| RF-08-15 | Al aprobar, el sistema descuenta los días del saldo del colaborador | ⏳ |
-| RF-08-16 | El colaborador es notificado vía WhatsApp con el resultado en menos de 30 segundos | ⏳ |
+| RF-08-12 | El responsable accede al dashboard de licencias pendientes | ✅ |
+| RF-08-13 | El responsable puede revisar la solicitud y los documentos adjuntos | ✅ |
+| RF-08-14 | El responsable puede aprobar o rechazar con comentario opcional | ✅ |
+| RF-08-15 | Al aprobar, el sistema descuenta los días del saldo del colaborador | ✅ |
+| RF-08-16 | El colaborador es notificado vía WhatsApp con el resultado en menos de 30 segundos | ✅ |
 | RF-08-17 | El estado se actualiza en el calendario de ausencias del equipo | ⏳ |
 
 ### 4.5.4 — Estados de una Solicitud
 
 | ID | Descripción | Estado |
 |----|-------------|--------|
-| RF-08-18 | Soporte completo para todos los estados definidos (ver tabla de estados) | ⏳ |
-| RF-08-19 | El colaborador puede cancelar una solicitud en estado Pendiente (antes del inicio) | ⏳ |
+| RF-08-18 | Soporte completo para todos los estados definidos (ver tabla de estados) | ✅ |
+| RF-08-19 | El colaborador puede cancelar una solicitud en estado Pendiente (antes del inicio) | ✅ |
 | RF-08-20 | Las solicitudes vencen automáticamente si no se presenta documentación en plazo | ⏳ |
 
 ### 4.5.5 — Saldo de Días y Calendario
 
 | ID | Descripción | Estado |
 |----|-------------|--------|
-| RF-08-21 | Cada colaborador tiene saldo de días por tipo de licencia según convenio y antigüedad | ⏳ |
-| RF-08-22 | El colaborador puede consultar su saldo vía WhatsApp ("Ver mis días disponibles") | ⏳ |
+| RF-08-21 | Cada colaborador tiene saldo de días por tipo de licencia según convenio y antigüedad | ✅ |
+| RF-08-22 | El colaborador puede consultar su saldo vía WhatsApp ("Ver mis días disponibles") | ✅ |
 | RF-08-23 | RR.HH. visualiza el calendario de ausencias con vista mensual y filtros por departamento | ⏳ |
 | RF-08-24 | Alertas automáticas: saldo bajo (< 3 días), vencimiento de vacaciones no tomadas, acumulación excesiva | ⏳ |
 
@@ -81,6 +81,8 @@ Gestión del ciclo completo de solicitud, aprobación, seguimiento y control de 
 | Accidente de trabajo | ART | Serv. Médico / ART | Sí (denuncia ART) |
 | Sin goce de sueldo | SGS | Administrador | No |
 | Personalizada | CUST | Configurable | Configurable |
+
+> **Separación aprobadores (implementado v1.2):** El back-office diferencia licencias médicas (ENF, ART — aprobadas por Servicio Médico) de licencias administrativas (VAC, MAT, PAT, etc. — aprobadas por RR.HH.). El portal de cada rol muestra solo las licencias de su competencia. Las licencias también se pueden solicitar vía portal web (`/employee/leaves`) con toggle Médica/Administrativa.
 
 ---
 
@@ -112,7 +114,10 @@ Ver `docs/API_SPEC.md` → Sección Licencias.
 
 ## Notas de implementación
 
-- El cálculo de días disponibles debe considerar antigüedad, convenio colectivo y licencias ya aprobadas del período.
-- Los documentos adjuntos se almacenan en S3/equivalente con URL firmada; el Servicio Médico debe poder visualizarlos desde el back-office.
-- El flujo de WhatsApp no debe superar 8 intercambios de mensajes en ningún tipo de licencia.
-- Las alertas de saldo bajo deben ser configurables por empresa (umbral de días).
+- El saldo de días considera licencias ya aprobadas del período (tabla `saldo_licencias`). El cálculo por antigüedad y convenio es manual en v1.0.
+- Documentos adjuntos se suben a Supabase Storage (`documentos_solicitud`) con signed URL. Servicio Médico los puede ver desde `AdminLicenciasPage`.
+- El flujo WhatsApp tiene 5 intercambios: menú → tipo → fechas → balance → confirmación.
+- Las alertas automáticas (RF-08-24) y el calendario visual (RF-08-23) son funcionalidades pendientes para v1.1.
+- Las solicitudes vencidas (RF-08-20) requieren un job programado — no implementado en v1.0.
+- `licencias_service.py` usa `best-effort` para la notificación WA (wrapped en try/except), por lo que el endpoint no falla si WhatsApp no está configurado.
+- Campos médicos adicionales (`medico_nombre`, `medico_apellido`, `medico_matricula`, `dias_reposo`) están en migración `20260516000000_add_medical_fields_to_solicitudes.sql` — pendiente de aplicar en Supabase remoto.

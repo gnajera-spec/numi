@@ -29,7 +29,7 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-v1.2 — QA completado, bugs críticos corregidos, licencias médicas/administrativas separadas
+v1.3 — Módulo Colaboradores RRHH completo, bugs críticos corregidos
 Última actualización: 2026-05-16
 Tests: 251 pasando
 Commits pendientes: ninguno
@@ -100,6 +100,7 @@ Credenciales demo (DEV):
 | Fase 8 | Reportes + Dashboard RRHH | ✅ Completada | 2026-05-12 |
 | Fase 9 | Invitaciones + SMTP + SuperAdmin panel | ✅ Completada | 2026-05-15 |
 | Fase 10 | QA + bugfixes + licencias médicas/administrativas | ✅ Completada | 2026-05-16 |
+| Fase 11 | Módulo Colaboradores RRHH (lista + editor legajo) | ✅ Completada | 2026-05-16 |
 
 ---
 
@@ -214,7 +215,7 @@ frontend/src/
     adminLicenciasService.ts      ✅ listSolicitudes, aprobar, rechazar
     adminComunicacionesService.ts ✅ list, create, get, enviar, reenviar
     adminRecibosService.ts        ✅ listPeriodos, createPeriodo, upload, confirmUpload, getRecibos, downloadCsv
-    adminUsuariosService.ts       ✅ list, create, invite, suspend, reactivate, baja
+    adminUsuariosService.ts       ✅ list, create, invite, suspend, reactivate, baja, getOne, update
     organizacionService.ts        ✅ sedes (list/create/toggle), departamentos (list/create/toggle), puestos (list/create/toggle), convenios (list/create)
     medicoService.ts              ✅ fichas (get/update), exámenes (list/create), vacunaciones (list/create), aptitudes (list/create), accidentes (list/create/update), reportes
     superAdminService.ts          🔄 listTenants, createTenant, getTenant, updateTenant, listTenantUsers, setTenantUserRoles
@@ -245,6 +246,8 @@ frontend/src/
     pages/admin/AdminOrganizacionPage.tsx   ✅ /admin/organizacion — 4 tabs (Sedes, Departamentos árbol, Puestos, Convenios), create modal + toggle activo/inactivo
     pages/admin/AdminSmtpConfigPage.tsx     ✅ /admin/configuracion/smtp — toggle NUMI vs custom SMTP, form, test conexión
     pages/admin/AdminTiposLicenciasPage.tsx ✅ /admin/tipos-licencias — lista, crear, eliminar tipos de licencia
+    pages/admin/AdminColaboradoresPage.tsx  ✅ /admin/colaboradores — lista con search + filtro estado, cards con avatar/legajo/sede/depto
+    pages/admin/AdminColaboradorDetailPage.tsx ✅ /admin/colaboradores/:id — detalle + 3 secciones editables: datos personales, legajo laboral, estructura organizativa
 
   Portal colaborador (público):
     pages/OnboardingPage.tsx               ✅ /onboarding/:token — formulario self-service para colaboradores invitados
@@ -384,6 +387,31 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 ---
 
 ## LOG DE SESIONES
+
+### 2026-05-16 — Sesión 17
+**Duración aproximada:** 45 min
+**Objetivo de la sesión:** Módulo Colaboradores RRHH + bugs críticos backend
+
+**Completado:**
+
+**Backend — bugfixes:**
+- `backend/app/repositories/user_repository.py` — `update()`: eliminado `.single()` inválido después de `.update()` (`.single()` no existe en `AsyncFilterRequestBuilder`); cambiado a `res.data[0] if res.data else None`. Causa: PATCH `/users/{id}` retornaba 500 cuando se modificaban `first_name` o `last_name`.
+- `backend/app/repositories/colaborador_repository.py` — `update()`: cambiado de `UPDATE` a `UPSERT` con `on_conflict="user_id"`, agregado `tenant_id` al payload y a la firma. Causa: colaboradores sin fila en `colaborador_perfil` (pendientes de activación) no guardaban ningún campo — era un silencioso no-op.
+- `backend/app/services/user_service.py` — actualizado ambos calls a `_colaboradores.update()` para pasar `tenant_id`.
+
+**Frontend — módulo Colaboradores RRHH:**
+- `frontend/src/types/index.ts` — agregados `ColaboradorPerfil`, `UserDetail`, `UpdateUserRequest`
+- `frontend/src/services/adminUsuariosService.ts` — agregados métodos `getOne` y `update`
+- `frontend/src/components/AdminLayout.tsx` — "Colaboradores" agregado al nav de RRHH (icono `Users`)
+- `frontend/src/pages/admin/AdminColaboradoresPage.tsx` — lista paginada filtrada a `role=colaborador`; search debounced (300ms); filtro por estado; cards con avatar initials, nombre, estado badge, email, legajo, sede, departamento; click navega a detalle
+- `frontend/src/pages/admin/AdminColaboradorDetailPage.tsx` — breadcrumb; info card superior con nombre/estado/email/CUIL/WA masked; 3 secciones editables: Datos personales (nombre, apellido), Legajo laboral (N° legajo, tipo_contrato select, fecha_ingreso date), Estructura organizativa (sede, departamento flattenado, puesto, convenio); dropdowns cargan desde `organizacionService`; `handleSave` envía `null` para campos vacíos para permitir limpieza en DB; feedback "Cambios guardados" (2500ms auto-hide)
+- `frontend/src/App.tsx` — rutas `/admin/colaboradores` y `/admin/colaboradores/:id` con `RoleGuardRoute allowedRoles=["super_admin","rrhh"]`
+
+**Commit:** `e6f574f` — feat: add Colaboradores section for RRHH — list + legajo editor
+
+**Estado al cerrar:** 251 tests pasando. Módulo Colaboradores RRHH completo y probado en browser. Datos persisten correctamente en `colaborador_perfil` vía upsert.
+
+---
 
 ### 2026-05-15 — Sesión 16
 **Duración aproximada:** En progreso

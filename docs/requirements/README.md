@@ -10,12 +10,12 @@
 |---|---------|--------|-----------|--------|
 | 01 | [REQ_01_introduccion_alcance.md](REQ_01_introduccion_alcance.md) | Introducción y Alcance | Alta | ⏳ Pendiente |
 | 02 | [REQ_02_multi_tenant.md](REQ_02_multi_tenant.md) | Arquitectura Multi-Tenant | Alta | ⏳ Pendiente |
-| 03 | [REQ_03_roles_perfiles.md](REQ_03_roles_perfiles.md) | Roles y Perfiles de Usuario | Alta | ⏳ Pendiente |
+| 03 | [REQ_03_roles_perfiles.md](REQ_03_roles_perfiles.md) | Roles y Perfiles de Usuario | Alta | ✅ Implementado |
 | 04 | [REQ_04_gestion_empresas.md](REQ_04_gestion_empresas.md) | Gestión de Empresas | Alta | ⏳ Pendiente |
-| 05 | [REQ_05_usuarios.md](REQ_05_usuarios.md) | Administración de Usuarios | Alta | ⏳ Pendiente |
+| 05 | [REQ_05_usuarios.md](REQ_05_usuarios.md) | Administración de Usuarios | Alta | 🔄 En curso |
 | 06 | [REQ_06_recibos_sueldo.md](REQ_06_recibos_sueldo.md) | Recibos de Sueldo | Alta | ⏳ Pendiente |
 | 07 | [REQ_07_comunicaciones.md](REQ_07_comunicaciones.md) | Comunicaciones Institucionales | Media | ⏳ Pendiente |
-| 08 | [REQ_08_licencias.md](REQ_08_licencias.md) | Gestión de Licencias | Alta | ⏳ Pendiente |
+| 08 | [REQ_08_licencias.md](REQ_08_licencias.md) | Gestión de Licencias | Alta | 🔄 En curso |
 | 09 | [REQ_09_servicio_medico.md](REQ_09_servicio_medico.md) | Servicio Médico | Media | ⏳ Pendiente |
 | 10 | [REQ_10_whatsapp.md](REQ_10_whatsapp.md) | Integración WhatsApp Business API | Alta | ⏳ Pendiente |
 | 11 | [REQ_11_portal_web.md](REQ_11_portal_web.md) | Portal Web del Colaborador | Alta | ⏳ Pendiente |
