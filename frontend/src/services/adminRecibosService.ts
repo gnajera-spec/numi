@@ -71,4 +71,58 @@ export const adminRecibosService = {
     a.click();
     URL.revokeObjectURL(objectUrl);
   },
+
+  // ── CUIL region config ──────────────────────────────────────────────────────
+
+  getCuilConfig: () =>
+    apiClient.get<CuilRegionConfig | null>("/recibos/cuil-config"),
+
+  saveCuilConfig: (data: CuilRegionConfigUpdate) =>
+    apiClient.put<CuilRegionConfig>("/recibos/cuil-config", data),
+
+  uploadSamplePdf: async (file: File): Promise<{ sample_pdf_path: string; signed_url: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem("access_token");
+    const res = await fetch(`${BASE_URL}/recibos/cuil-config/sample`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.detail ?? "Error al subir PDF de ejemplo");
+    }
+    return res.json();
+  },
+
+  getSampleUrl: () =>
+    apiClient.get<{ signed_url: string | null }>("/recibos/cuil-config/sample-url"),
+
+  testCuilExtraction: () =>
+    apiClient.post<CuilExtractionTestResult>("/recibos/cuil-config/test", {}),
 };
+
+export interface CuilRegionConfig {
+  page_number: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  sample_pdf_path: string | null;
+}
+
+export interface CuilRegionConfigUpdate {
+  page_number: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface CuilExtractionTestResult {
+  cuil_extraido: string | null;
+  texto_crudo: string | null;
+  exito: boolean;
+  detalle: string;
+}

@@ -250,9 +250,11 @@ export interface CreatePeriodoRequest {
 
 export interface UploadPreviewItem {
   cuil: string;
-  nombre: string;
+  nombre: string | null;
   archivo: string;
-  user_id?: string;
+  user_id?: string | null;
+  matched: boolean;
+  rechazo_motivo?: string | null;
 }
 
 export interface UploadPreviewResponse {

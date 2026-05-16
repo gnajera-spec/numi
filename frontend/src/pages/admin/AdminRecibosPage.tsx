@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { FileText, Plus, X, Upload, ChevronRight, Download } from "lucide-react";
+import { FileText, Plus, X, Upload, ChevronRight, Download, Settings } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Spinner } from "../../components/Spinner";
+import CuilRegionConfigurator from "../../components/CuilRegionConfigurator";
 import { adminRecibosService } from "../../services/adminRecibosService";
+import type { CuilRegionConfig } from "../../services/adminRecibosService";
 import type {
   PeriodoLiquidacion,
   CreatePeriodoRequest,
@@ -272,26 +274,44 @@ function UploadModal({ periodo, onClose, onDone }: UploadModalProps) {
                 {preview.total_archivos} archivo{preview.total_archivos !== 1 ? "s" : ""} detectado{preview.total_archivos !== 1 ? "s" : ""}
               </p>
               <div className="max-h-40 overflow-y-auto flex flex-col gap-1 mt-2">
-                {preview.preview.map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: item.user_id ? "var(--color-state-present)" : "var(--color-state-absent)" }}
-                    />
-                    <span style={{ color: "var(--color-content-secondary)" }}>CUIL {item.cuil}</span>
-                    <span style={{ color: "var(--color-content-primary)" }}>{item.nombre || item.archivo}</span>
-                    {!item.user_id && (
-                      <span className="text-xs" style={{ color: "var(--color-state-absent)" }}>
-                        sin usuario
-                      </span>
-                    )}
-                  </div>
-                ))}
+                {preview.preview.map((item, i) => {
+                  const rechazado = !item.user_id;
+                  const motivoLabel =
+                    item.rechazo_motivo === "cuil_no_extraible"
+                      ? "CUIL no leído en la región configurada"
+                      : item.rechazo_motivo === "cuil_sin_usuario"
+                      ? "CUIL sin colaborador registrado"
+                      : rechazado ? "sin usuario" : null;
+                  return (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span
+                        className="w-1.5 h-1.5 rounded-full shrink-0 mt-1"
+                        style={{ background: rechazado ? "var(--color-state-absent)" : "var(--color-state-present)" }}
+                      />
+                      <div className="flex flex-col">
+                        <span style={{ color: "var(--color-content-primary)" }}>
+                          {item.archivo}
+                        </span>
+                        {item.user_id ? (
+                          <span style={{ color: "var(--color-content-secondary)" }}>
+                            CUIL {item.cuil} — {item.nombre}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--color-state-absent)" }}>
+                            {motivoLabel}
+                            {item.cuil !== "no_extraible" && ` (${item.cuil})`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             <p className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
-              Los recibos marcados en verde se distribuirán. Los rojos no tienen usuario mapeado y serán omitidos.
+              Los recibos en verde se distribuirán. Los rojos serán rechazados — no se envían si el CUIL
+              no pudo leerse o no corresponde a ningún colaborador.
             </p>
 
             <div className="flex justify-end gap-3">
@@ -437,22 +457,30 @@ function PeriodoDetalle({ periodo, onClose }: PeriodoDetalleProps) {
 
 // ── Página principal ────────────────────────────────────────────────────────
 
+type Tab = "periodos" | "configuracion";
+
 export function AdminRecibosPage() {
   const { user } = useAuth();
   const canManage = user?.role === "admin_empresa" || user?.role === "super_admin" || user?.role === "rrhh";
+  const [tab, setTab] = useState<Tab>("periodos");
   const [periodos, setPeriodos] = useState<PeriodoLiquidacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNuevoPeriodoModal, setShowNuevoPeriodoModal] = useState(false);
   const [uploadPeriodo, setUploadPeriodo] = useState<PeriodoLiquidacion | null>(null);
   const [detallePeriodo, setDetallePeriodo] = useState<PeriodoLiquidacion | null>(null);
+  const [cuilConfig, setCuilConfig] = useState<CuilRegionConfig | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await adminRecibosService.listPeriodos({ page_size: 50 });
+      const [res, cfg] = await Promise.all([
+        adminRecibosService.listPeriodos({ page_size: 50 }),
+        adminRecibosService.getCuilConfig().catch(() => null),
+      ]);
       setPeriodos(res.data ?? []);
+      setCuilConfig(cfg);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar períodos");
     } finally {
@@ -461,6 +489,11 @@ export function AdminRecibosPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const tabs = [
+    { key: "periodos" as Tab, label: "Períodos", icon: FileText },
+    { key: "configuracion" as Tab, label: "Configuración CUIL", icon: Settings },
+  ];
 
   return (
     <AdminLayout>
@@ -472,11 +505,11 @@ export function AdminRecibosPage() {
               Recibos de sueldo
             </h1>
             <p className="text-sm" style={{ color: "var(--color-content-secondary)" }}>
-              Períodos y distribución
+              Períodos, distribución y configuración
             </p>
           </div>
         </div>
-        {canManage && (
+        {tab === "periodos" && canManage && (
           <Button onClick={() => setShowNuevoPeriodoModal(true)}>
             <Plus size={16} />
             Nuevo período
@@ -484,11 +517,97 @@ export function AdminRecibosPage() {
         )}
       </div>
 
-      {error && <div className="mb-4"><ErrorBanner message={error} onRetry={load} /></div>}
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: "var(--color-surface-border)" }}>
+        {tabs.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style={{
+              borderColor: tab === key ? "var(--color-brand-primary)" : "transparent",
+              color: tab === key ? "var(--color-brand-primary)" : "var(--color-content-secondary)",
+            }}
+          >
+            <Icon size={15} />
+            {label}
+            {key === "configuracion" && !cuilConfig && (
+              <span
+                className="ml-1 rounded-full px-1.5 py-0.5 text-xs font-bold"
+                style={{ background: "var(--color-status-warning)", color: "#fff" }}
+              >
+                !
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
-      {loading ? (
+      {/* Configuración tab */}
+      {tab === "configuracion" && (
+        <div
+          className="rounded-xl border p-6"
+          style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}
+        >
+          <h2 className="text-base font-semibold mb-1" style={{ color: "var(--color-content-primary)" }}>
+            Extracción de CUIL por región
+          </h2>
+          <p className="text-sm mb-6" style={{ color: "var(--color-content-secondary)" }}>
+            Definí en qué parte del recibo se encuentra el CUIL. El sistema usará esta región para
+            verificar que cada PDF corresponda al colaborador correcto antes de distribuirlo.
+          </p>
+          {!cuilConfig && (
+            <div
+              className="mb-4 rounded-lg border px-4 py-3 text-sm flex items-center gap-2"
+              style={{
+                background: "rgba(234,179,8,0.08)",
+                borderColor: "var(--color-status-warning)",
+                color: "var(--color-content-primary)",
+              }}
+            >
+              <Settings size={16} className="shrink-0 text-yellow-500" />
+              La configuración de región no está definida. No podrás subir recibos hasta completarla.
+            </div>
+          )}
+          <CuilRegionConfigurator
+            initialConfig={cuilConfig}
+            onSaved={(cfg) => setCuilConfig(cfg)}
+          />
+        </div>
+      )}
+
+      {/* Períodos tab */}
+      {tab === "periodos" && (
+        <>
+          {!cuilConfig && (
+            <div
+              className="mb-4 rounded-lg border px-4 py-3 text-sm flex items-center justify-between gap-3"
+              style={{
+                background: "rgba(234,179,8,0.08)",
+                borderColor: "var(--color-status-warning)",
+                color: "var(--color-content-primary)",
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <Settings size={15} className="text-yellow-500 shrink-0" />
+                Configurá la región del CUIL antes de subir recibos.
+              </span>
+              <button
+                className="text-xs font-medium underline"
+                style={{ color: "var(--color-brand-primary)" }}
+                onClick={() => setTab("configuracion")}
+              >
+                Ir a Configuración
+              </button>
+            </div>
+          )}
+          {error && <div className="mb-4"><ErrorBanner message={error} onRetry={load} /></div>}
+        </>
+      )}
+
+      {tab === "periodos" && loading ? (
         <div className="flex justify-center py-12"><Spinner size={28} /></div>
-      ) : periodos.length === 0 ? (
+      ) : tab === "periodos" && periodos.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="Sin períodos"
@@ -501,7 +620,7 @@ export function AdminRecibosPage() {
             ) : undefined
           }
         />
-      ) : (
+      ) : tab === "periodos" ? (
         <div className="flex flex-col gap-3">
           {periodos.map((p) => {
             const pct = p.total_recibos > 0
@@ -577,7 +696,7 @@ export function AdminRecibosPage() {
             );
           })}
         </div>
-      )}
+      ) : null}
 
       {showNuevoPeriodoModal && (
         <NuevoPeriodoModal

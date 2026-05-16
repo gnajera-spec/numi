@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from supabase._async.client import AsyncClient
 
 from app.db.supabase import get_supabase
 from app.dependencies.auth import get_current_user, require_role
+from app.repositories.cuil_region_config_repository import CuilRegionConfigRepository
 from app.repositories.periodo_repository import PeriodoRepository
 from app.repositories.recibo_repository import ReciboRepository
 from app.repositories.upload_job_repository import UploadJobRepository
@@ -14,6 +15,9 @@ from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.schemas.recibos import (
     ConfirmResponse,
     CreatePeriodoRequest,
+    CuilExtractionTestResult,
+    CuilRegionConfigOut,
+    CuilRegionConfigUpdate,
     FirmarRequest,
     PaginatedDashboard,
     PaginatedPeriodos,
@@ -36,7 +40,54 @@ def _svc(db: AsyncClient = Depends(get_supabase)) -> ReciboService:
         UserRepository(db),
         WhatsappConfigRepository(db),
         UploadJobRepository(db),
+        CuilRegionConfigRepository(db),
     )
+
+
+# ── CUIL region config ────────────────────────────────────────────────────────
+# NOTE: these routes must appear before /recibos/{recibo_id} to avoid routing conflicts
+
+@router.get("/recibos/cuil-config", response_model=CuilRegionConfigOut | None)
+async def get_cuil_config(
+    current_user: dict = Depends(require_role("rrhh", "admin_empresa", "super_admin")),
+    svc: ReciboService = Depends(_svc),
+):
+    return await svc.get_cuil_config(str(current_user["tenant_id"]))
+
+
+@router.put("/recibos/cuil-config", response_model=CuilRegionConfigOut)
+async def save_cuil_config(
+    data: CuilRegionConfigUpdate,
+    current_user: dict = Depends(require_role("rrhh", "admin_empresa", "super_admin")),
+    svc: ReciboService = Depends(_svc),
+):
+    return await svc.save_cuil_config(str(current_user["tenant_id"]), data)
+
+
+@router.post("/recibos/cuil-config/sample", status_code=status.HTTP_201_CREATED)
+async def upload_sample_pdf(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_role("rrhh", "admin_empresa", "super_admin")),
+    svc: ReciboService = Depends(_svc),
+):
+    return await svc.upload_sample_pdf(str(current_user["tenant_id"]), file)
+
+
+@router.get("/recibos/cuil-config/sample-url")
+async def get_sample_url(
+    current_user: dict = Depends(require_role("rrhh", "admin_empresa", "super_admin")),
+    svc: ReciboService = Depends(_svc),
+):
+    url = await svc.get_sample_signed_url(str(current_user["tenant_id"]))
+    return {"signed_url": url}
+
+
+@router.post("/recibos/cuil-config/test", response_model=CuilExtractionTestResult)
+async def test_cuil_extraction(
+    current_user: dict = Depends(require_role("rrhh", "admin_empresa", "super_admin")),
+    svc: ReciboService = Depends(_svc),
+):
+    return await svc.test_cuil_extraction(str(current_user["tenant_id"]))
 
 
 # ── Períodos ──────────────────────────────────────────────────────────────────

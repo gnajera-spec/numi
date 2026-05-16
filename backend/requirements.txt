@@ -13,3 +13,4 @@ pydantic[email]>=2.0.0
 python-multipart>=0.0.9
 pyotp>=2.9.0
 qrcode>=8.0
+pdfplumber>=0.11.0

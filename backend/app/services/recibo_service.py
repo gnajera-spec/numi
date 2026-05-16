@@ -1,7 +1,6 @@
 import hashlib
 import io
 import math
-import re
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -11,6 +10,7 @@ from fastapi import HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from supabase._async.client import AsyncClient
 
+from app.repositories.cuil_region_config_repository import CuilRegionConfigRepository
 from app.repositories.periodo_repository import PeriodoRepository
 from app.repositories.recibo_repository import ReciboRepository
 from app.repositories.upload_job_repository import UploadJobRepository
@@ -19,6 +19,9 @@ from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.schemas.recibos import (
     ConfirmResponse,
     CreatePeriodoRequest,
+    CuilExtractionTestResult,
+    CuilRegionConfigOut,
+    CuilRegionConfigUpdate,
     FirmaOut,
     FirmarRequest,
     PaginatedDashboard,
@@ -32,16 +35,12 @@ from app.schemas.recibos import (
     UploadResponse,
 )
 from app.schemas.users import Pagination
+from app.services.cuil_extraction_service import extract_cuil_from_pdf, test_extraction
 
 _STORAGE_BUCKET = "recibos"
 _SIGNED_URL_TTL = 86400  # 24h
 _MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MB
-
-
-def _extract_cuil(filename: str) -> str | None:
-    digits = re.sub(r"[^0-9]", "", filename)
-    match = re.search(r"(\d{11})", digits)
-    return match.group(1) if match else None
+_SAMPLE_PREFIX = "cuil-config-samples"
 
 
 def _file_hash(data: bytes) -> str:
@@ -68,6 +67,7 @@ class ReciboService:
         user_repo: UserRepository,
         wa_config_repo: WhatsappConfigRepository | None = None,
         upload_job_repo: UploadJobRepository | None = None,
+        cuil_config_repo: CuilRegionConfigRepository | None = None,
     ) -> None:
         self._db = db
         self._periodos = periodo_repo
@@ -75,6 +75,117 @@ class ReciboService:
         self._users = user_repo
         self._wa_configs = wa_config_repo
         self._upload_jobs = upload_job_repo or UploadJobRepository(db)
+        self._cuil_configs = cuil_config_repo or CuilRegionConfigRepository(db)
+
+    # ── CUIL region config ───────────────────────────────────────
+
+    async def get_cuil_config(self, tenant_id: str) -> CuilRegionConfigOut | None:
+        row = await self._cuil_configs.get(tenant_id)
+        if not row:
+            return None
+        return CuilRegionConfigOut(
+            page_number=row["page_number"],
+            x0=row["x0"],
+            y0=row["y0"],
+            x1=row["x1"],
+            y1=row["y1"],
+            sample_pdf_path=row.get("sample_pdf_path"),
+        )
+
+    async def save_cuil_config(
+        self, tenant_id: str, data: CuilRegionConfigUpdate
+    ) -> CuilRegionConfigOut:
+        existing = await self._cuil_configs.get(tenant_id)
+        payload = {
+            "page_number": data.page_number,
+            "x0": data.x0,
+            "y0": data.y0,
+            "x1": data.x1,
+            "y1": data.y1,
+        }
+        if existing:
+            payload["sample_pdf_path"] = existing.get("sample_pdf_path")
+        row = await self._cuil_configs.upsert(tenant_id, payload)
+        return CuilRegionConfigOut(
+            page_number=row["page_number"],
+            x0=row["x0"],
+            y0=row["y0"],
+            x1=row["x1"],
+            y1=row["y1"],
+            sample_pdf_path=row.get("sample_pdf_path"),
+        )
+
+    async def upload_sample_pdf(
+        self, tenant_id: str, file: UploadFile
+    ) -> dict:
+        fname = file.filename or ""
+        if not fname.lower().endswith(".pdf"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El archivo debe ser PDF")
+        raw = await file.read()
+        if len(raw) > _MAX_FILE_BYTES:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El archivo excede 50MB")
+
+        path = f"{_SAMPLE_PREFIX}/{tenant_id}/sample.pdf"
+        await self._db.storage.from_(_STORAGE_BUCKET).upload(
+            path, raw, {"content-type": "application/pdf", "upsert": "true"}
+        )
+        existing = await self._cuil_configs.get(tenant_id)
+        if existing:
+            await self._cuil_configs.upsert(tenant_id, {
+                "page_number": existing["page_number"],
+                "x0": existing["x0"], "y0": existing["y0"],
+                "x1": existing["x1"], "y1": existing["y1"],
+                "sample_pdf_path": path,
+            })
+        else:
+            await self._cuil_configs.upsert(tenant_id, {
+                "page_number": 1, "x0": 0, "y0": 0, "x1": 100, "y1": 20,
+                "sample_pdf_path": path,
+            })
+
+        signed = await self._db.storage.from_(_STORAGE_BUCKET).create_signed_url(path, expires_in=3600)
+        return {
+            "sample_pdf_path": path,
+            "signed_url": signed.get("signedURL") or signed.get("signedUrl"),
+        }
+
+    async def get_sample_signed_url(self, tenant_id: str) -> str | None:
+        cfg = await self._cuil_configs.get(tenant_id)
+        if not cfg or not cfg.get("sample_pdf_path"):
+            return None
+        try:
+            signed = await self._db.storage.from_(_STORAGE_BUCKET).create_signed_url(
+                cfg["sample_pdf_path"], expires_in=3600
+            )
+            return signed.get("signedURL") or signed.get("signedUrl")
+        except Exception:
+            return None
+
+    async def test_cuil_extraction(self, tenant_id: str) -> CuilExtractionTestResult:
+        cfg = await self._cuil_configs.get(tenant_id)
+        if not cfg:
+            return CuilExtractionTestResult(
+                cuil_extraido=None, texto_crudo=None, exito=False,
+                detalle="No hay configuración de región guardada. Subí un PDF de ejemplo y definí la región primero.",
+            )
+        if not cfg.get("sample_pdf_path"):
+            return CuilExtractionTestResult(
+                cuil_extraido=None, texto_crudo=None, exito=False,
+                detalle="No hay PDF de ejemplo. Subí un recibo de ejemplo primero.",
+            )
+        try:
+            pdf_bytes = await self._db.storage.from_(_STORAGE_BUCKET).download(cfg["sample_pdf_path"])
+        except Exception:
+            return CuilExtractionTestResult(
+                cuil_extraido=None, texto_crudo=None, exito=False,
+                detalle="No se pudo descargar el PDF de ejemplo.",
+            )
+        return test_extraction(
+            pdf_bytes,
+            page_number=cfg["page_number"],
+            x0=cfg["x0"], y0=cfg["y0"],
+            x1=cfg["x1"], y1=cfg["y1"],
+        )
 
     # ── Períodos ─────────────────────────────────────────────────
 
@@ -117,9 +228,18 @@ class ReciboService:
         if periodo["estado"] != "borrador":
             raise HTTPException(status.HTTP_409_CONFLICT, "Solo se pueden subir archivos a períodos en estado borrador")
 
+        # Require region config — no filename fallback
+        cuil_cfg = await self._cuil_configs.get(tenant_id)
+        if not cuil_cfg:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Configurá la región del CUIL antes de subir recibos. "
+                "Andá a Configuración → Extracción de CUIL.",
+            )
+
         raw = await file.read()
         if len(raw) > _MAX_FILE_BYTES:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "El archivo excede el límite de 50MB")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El archivo excede el límite de 50MB")
 
         # Extract PDFs from ZIP or use single PDF
         pdfs: list[tuple[str, bytes]] = []  # (filename, bytes)
@@ -131,26 +251,41 @@ class ReciboService:
                         if name.lower().endswith(".pdf") and not name.startswith("__MACOSX"):
                             pdfs.append((name.split("/")[-1], zf.read(name)))
             except zipfile.BadZipFile:
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "El archivo ZIP está dañado")
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El archivo ZIP está dañado")
         elif fname.lower().endswith(".pdf") or file.content_type == "application/pdf":
             pdfs.append((fname, raw))
         else:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "El archivo debe ser PDF o ZIP")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El archivo debe ser PDF o ZIP")
 
         if not pdfs:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "El ZIP no contiene archivos PDF")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "El ZIP no contiene archivos PDF")
 
         job_id = str(uuid.uuid4())
-
-        # Match CUILs to users and upload each PDF to temp storage
         preview: list[PreviewItem] = []
         job_files: list[dict] = []
 
         for idx, (filename, data_bytes) in enumerate(pdfs):
-            cuil = _extract_cuil(filename)
+            # Extract CUIL via configured region — no filename fallback
+            try:
+                cuil, _ = extract_cuil_from_pdf(
+                    data_bytes,
+                    page_number=cuil_cfg["page_number"],
+                    x0=cuil_cfg["x0"],
+                    y0=cuil_cfg["y0"],
+                    x1=cuil_cfg["x1"],
+                    y1=cuil_cfg["y1"],
+                )
+            except ValueError:
+                cuil = None
+
             user = None
-            if cuil:
+            rechazo_motivo: str | None = None
+            if not cuil:
+                rechazo_motivo = "cuil_no_extraible"
+            else:
                 user = await self._users.get_by_cuil_and_tenant(cuil, tenant_id)
+                if not user:
+                    rechazo_motivo = "cuil_sin_usuario"
 
             temp_path = f"temp/{job_id}/{idx:04d}.pdf"
             await self._db.storage.from_(_STORAGE_BUCKET).upload(
@@ -160,11 +295,12 @@ class ReciboService:
             )
 
             preview.append(PreviewItem(
-                cuil=cuil or "desconocido",
+                cuil=cuil or "no_extraible",
                 nombre=f"{user['first_name']} {user['last_name']}" if user else None,
                 archivo=filename,
                 user_id=user["id"] if user else None,
                 matched=user is not None,
+                rechazo_motivo=rechazo_motivo,
             ))
             job_files.append({
                 "cuil": cuil,
@@ -172,10 +308,10 @@ class ReciboService:
                 "temp_path": temp_path,
                 "user_id": str(user["id"]) if user else None,
                 "size_bytes": len(data_bytes),
+                "rechazo_motivo": rechazo_motivo,
             })
 
         await self._upload_jobs.create(job_id, tenant_id, periodo_id, job_files)
-
         return UploadResponse(job_id=job_id, total_archivos=len(pdfs), preview=preview)
 
     async def confirm_upload(
@@ -197,8 +333,10 @@ class ReciboService:
         for item in job["files"]:
             temp_paths.append(item["temp_path"])
 
-            if not item["user_id"] or not item["cuil"]:
-                errores.append(item.get("cuil") or item["filename"])
+            # Strict: reject if CUIL couldn't be extracted or had no user match
+            if item.get("rechazo_motivo") or not item["user_id"] or not item["cuil"]:
+                motivo = item.get("rechazo_motivo", "cuil_sin_usuario")
+                errores.append(f"{item['filename']} ({motivo})")
                 continue
 
             cuil: str = item["cuil"]

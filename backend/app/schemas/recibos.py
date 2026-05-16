@@ -74,6 +74,7 @@ class PreviewItem(BaseModel):
     archivo: str
     user_id: UUID | None = None
     matched: bool
+    rechazo_motivo: str | None = None  # "cuil_no_extraible" | "cuil_sin_usuario"
 
 
 class UploadResponse(BaseModel):
@@ -154,3 +155,40 @@ class FirmarRequest(BaseModel):
 
 class RenotificarRequest(BaseModel):
     user_ids: list[UUID] = []
+
+
+# ── CUIL region config ────────────────────────────────────────────────────────
+
+class CuilRegionConfigOut(BaseModel):
+    page_number: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    sample_pdf_path: str | None = None
+
+
+class CuilRegionConfigUpdate(BaseModel):
+    page_number: int = 1
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+class CuilExtractionTestResult(BaseModel):
+    cuil_extraido: str | None
+    texto_crudo: str | None
+    exito: bool
+    detalle: str
+
+
+# ── Preview enriquecido ───────────────────────────────────────────────────────
+
+class PreviewItemDetalle(BaseModel):
+    cuil: str
+    nombre: str | None = None
+    archivo: str
+    user_id: UUID | None = None
+    matched: bool
+    rechazo_motivo: str | None = None  # "cuil_no_extraible" | "cuil_sin_usuario"
