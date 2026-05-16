@@ -40,9 +40,9 @@ def _make_repo(**overrides) -> AsyncMock:
             "created_at": _NOW,
             "revisado_at": _NOW,
             "comentario_empleado": None,
-            "users": {"nombre": "Juan", "apellido": "García", "cuil": "20123456789"},
+            "users": {"first_name": "Juan", "last_name": "García", "cuil": "20123456789"},
             "tipos_licencia": {"nombre": "Vacaciones"},
-            "revisado_by": {"nombre": "María", "apellido": "López"},
+            "revisado_by": {"first_name": "María", "last_name": "López"},
         }
     ]
     repo.get_comunicaciones_para_export.return_value = [

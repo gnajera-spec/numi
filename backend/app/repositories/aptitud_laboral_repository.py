@@ -39,7 +39,7 @@ class AptitudLaboralRepository:
             self._db.table("aptitudes_laborales")
             .select(
                 "id, user_id, puesto_id, estado, fecha_vencimiento, "
-                "users!user_id(nombre, apellido), puestos!puesto_id(nombre)"
+                "users!user_id(first_name, last_name), puestos!puesto_id(nombre)"
             )
             .eq("tenant_id", tenant_id)
             .gte("fecha_vencimiento", hoy)

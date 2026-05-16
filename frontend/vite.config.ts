@@ -9,6 +9,8 @@ const backendPrefixes = [
   '/auth', '/comunicaciones', '/licencias', '/medico', '/recibos',
   '/periodos', '/users', '/tenants', '/reportes', '/departamentos',
   '/sedes', '/puestos', '/convenios', '/whatsapp', '/health',
+  '/admin/invitaciones', '/admin/configuracion',
+  '/onboarding',
   '/openapi.json', '/docs', '/redoc',
 ]
 

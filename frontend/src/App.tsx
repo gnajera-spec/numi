@@ -83,7 +83,7 @@ function RoleGuardRoute({
 
 function AdminAppInner() {
   const { user } = useAuth();
-  const defaultRoute = user?.role === "servicio_medico" ? "medico/fichas" : user?.role === "admin_empresa" ? "organizacion" : "dashboard";
+  const defaultRoute = user?.role === "servicio_medico" ? "/admin/medico/fichas" : user?.role === "admin_empresa" ? "/admin/organizacion" : "/admin/dashboard";
   return (
     <Routes>
       <Route

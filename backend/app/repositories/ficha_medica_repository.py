@@ -39,13 +39,13 @@ class FichaMedicaRepository:
         q = (
             self._db.table("users")
             .select(
-                "id, nombre, apellido, email, colaborador_perfil!inner(sede_id, departamento_id), fichas_medicas(id, grupo_sanguineo)",
+                "id, first_name, last_name, email, colaborador_perfil!inner(sede_id, departamento_id), fichas_medicas(id, grupo_sanguineo)",
                 count="exact",
             )
             .eq("tenant_id", tenant_id)
             .eq("role", "colaborador")
             .eq("estado", "activo")
-            .order("apellido")
+            .order("last_name")
             .range(offset, offset + limit - 1)
         )
         if sede_id:
@@ -53,6 +53,6 @@ class FichaMedicaRepository:
         if departamento_id:
             q = q.eq("colaborador_perfil.departamento_id", departamento_id)
         if search:
-            q = q.ilike("apellido", f"%{search}%")
+            q = q.ilike("last_name", f"%{search}%")
         res = await q.execute()
         return res.data or [], res.count or 0

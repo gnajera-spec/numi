@@ -38,9 +38,9 @@ class ReportesRepository:
         today_str = today.isoformat()
         resp = await self._db.table("aptitudes_laborales").select(
             "id", count="exact"
-        ).eq("tenant_id", tenant_id).eq("apto", True).gte(
-            "valida_hasta", today_str
-        ).lte("valida_hasta", limite).execute()
+        ).eq("tenant_id", tenant_id).in_(
+            "estado", ["apto", "apto_con_restricciones"]
+        ).gte("fecha_vencimiento", today_str).lte("fecha_vencimiento", limite).execute()
         return resp.count or 0
 
     async def get_recibos_sin_firmar(self, tenant_id: str) -> int:
@@ -59,9 +59,10 @@ class ReportesRepository:
         return resp.count or 0
 
     async def get_comunicados_sin_confirmar(self, tenant_id: str) -> int:
+        # comunicacion_destinatarios has no tenant_id — join through comunicaciones
         resp = await self._db.table("comunicacion_destinatarios").select(
-            "id", count="exact"
-        ).eq("tenant_id", tenant_id).eq("confirmado", False).execute()
+            "id, comunicaciones!inner(tenant_id)", count="exact"
+        ).eq("comunicaciones.tenant_id", tenant_id).is_("confirmado_at", "null").execute()
         return resp.count or 0
 
     async def get_headcount_por_sede(self, tenant_id: str) -> list[dict]:
@@ -121,9 +122,9 @@ class ReportesRepository:
     ) -> list[dict]:
         q = self._db.table("solicitudes_licencia").select(
             "numero_solicitud, fecha_inicio, fecha_fin, dias_habiles, estado, canal, created_at, revisado_at, comentario_empleado, "
-            "users!solicitudes_licencia_user_id_fkey(nombre, apellido, cuil), "
+            "users!solicitudes_licencia_user_id_fkey(first_name, last_name, cuil), "
             "tipos_licencia(nombre), "
-            "revisado_by:users!solicitudes_licencia_revisado_por_fkey(nombre, apellido)"
+            "revisado_by:users!solicitudes_licencia_revisado_por_fkey(first_name, last_name)"
         ).eq("tenant_id", tenant_id).order("created_at", desc=True)
         if desde:
             q = q.gte("fecha_inicio", desde)
@@ -152,9 +153,9 @@ class ReportesRepository:
 
     async def get_metricas_comunicacion(self, comunicacion_id: str) -> dict:
         resp = await self._db.table("comunicacion_destinatarios").select(
-            "leido, confirmado"
+            "leido_at, confirmado_at"
         ).eq("comunicacion_id", comunicacion_id).execute()
         rows = resp.data or []
-        leidos = sum(1 for r in rows if r.get("leido"))
-        confirmados = sum(1 for r in rows if r.get("confirmado"))
+        leidos = sum(1 for r in rows if r.get("leido_at"))
+        confirmados = sum(1 for r in rows if r.get("confirmado_at"))
         return {"leidos": leidos, "confirmados": confirmados}

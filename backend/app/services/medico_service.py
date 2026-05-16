@@ -114,7 +114,7 @@ class MedicoService:
             items.append(
                 FichaMedicaSummary(
                     user_id=row["id"],
-                    nombre_completo=f"{row['nombre']} {row['apellido']}",
+                    nombre_completo=f"{row['first_name']} {row['last_name']}",
                     email=row["email"],
                     grupo_sanguineo=ficha["grupo_sanguineo"] if ficha else None,
                     tiene_ficha=ficha is not None,
@@ -438,7 +438,7 @@ class MedicoService:
             venc = date.fromisoformat(r["fecha_vencimiento"])
             dias_rest = (venc - hoy).days
             try:
-                nombre = f"{r['users']['nombre']} {r['users']['apellido']}"
+                nombre = f"{r['users']['first_name']} {r['users']['last_name']}"
                 puesto = r["puestos"]["nombre"]
             except (KeyError, TypeError):
                 nombre = str(r["user_id"])

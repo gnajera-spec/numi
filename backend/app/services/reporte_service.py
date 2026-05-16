@@ -118,11 +118,11 @@ class ReporteService:
         ])
         for row in rows:
             user = row.get("users") or {}
-            colaborador = f"{user.get('apellido', '')} {user.get('nombre', '')}".strip()
+            colaborador = f"{user.get('last_name', '')} {user.get('first_name', '')}".strip()
             tipo = (row.get("tipos_licencia") or {}).get("nombre", "")
             revisado_by = row.get("revisado_by") or {}
             revisado_nombre = (
-                f"{revisado_by.get('apellido', '')} {revisado_by.get('nombre', '')}".strip()
+                f"{revisado_by.get('last_name', '')} {revisado_by.get('first_name', '')}".strip()
                 if revisado_by else ""
             )
             writer.writerow([
