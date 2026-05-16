@@ -192,6 +192,38 @@ export interface CreateUserRequest {
   tipo_contrato?: "indefinido" | "determinado" | "eventual" | "pasantia";
 }
 
+export interface ColaboradorPerfil {
+  sede_id?: string | null;
+  departamento_id?: string | null;
+  puesto_id?: string | null;
+  convenio_id?: string | null;
+  legajo?: string | null;
+  fecha_ingreso?: string | null;
+  tipo_contrato?: string | null;
+  email_personal?: string | null;
+  telefono_personal?: string | null;
+}
+
+export interface UserDetail extends UserSummary {
+  tenant_id?: string;
+  whatsapp_numero_masked?: string;
+  last_login_at?: string;
+  activated_at?: string;
+  colaborador_perfil?: ColaboradorPerfil | null;
+}
+
+export interface UpdateUserRequest {
+  first_name?: string;
+  last_name?: string;
+  sede_id?: string | null;
+  departamento_id?: string | null;
+  puesto_id?: string | null;
+  convenio_id?: string | null;
+  legajo?: string | null;
+  tipo_contrato?: string | null;
+  fecha_ingreso?: string | null;
+}
+
 // Admin — Periodos de liquidación
 export type EstadoPeriodo = "abierto" | "cerrado";
 

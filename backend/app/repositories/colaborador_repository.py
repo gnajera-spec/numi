@@ -26,20 +26,21 @@ class ColaboradorRepository:
 
         await self._db.table("colaborador_perfil").insert(payload).execute()
 
-    async def update(self, user_id: str | UUID, data: dict) -> None:
-        payload: dict = {}
+    async def update(self, user_id: str | UUID, tenant_id: str | UUID, data: dict) -> None:
+        payload: dict = {
+            "user_id": str(user_id),
+            "tenant_id": str(tenant_id),
+        }
         for key in (
             "sede_id", "departamento_id", "puesto_id", "convenio_id",
             "legajo", "tipo_contrato", "email_personal", "telefono_personal",
         ):
-            if key in data and data[key] is not None:
-                payload[key] = str(data[key]) if isinstance(data[key], UUID) else data[key]
+            if key in data:
+                val = data[key]
+                payload[key] = str(val) if isinstance(val, UUID) else val
 
-        if "fecha_ingreso" in data and data["fecha_ingreso"] is not None:
+        if "fecha_ingreso" in data:
             fi = data["fecha_ingreso"]
             payload["fecha_ingreso"] = fi.isoformat() if isinstance(fi, date) else fi
 
-        if not payload:
-            return
-
-        await self._db.table("colaborador_perfil").update(payload).eq("user_id", str(user_id)).execute()
+        await self._db.table("colaborador_perfil").upsert(payload, on_conflict="user_id").execute()

@@ -155,10 +155,9 @@ class UserRepository:
             .update(payload)
             .eq("id", str(user_id))
             .select("*")
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0] if res.data else None
 
 
     async def set_role(self, user_id: str | UUID, role: str, tenant_id: str) -> dict | None:

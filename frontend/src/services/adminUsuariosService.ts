@@ -1,5 +1,5 @@
 import { apiClient } from "../lib/apiClient";
-import type { UserSummary, CreateUserRequest, Paginated } from "../types";
+import type { UserSummary, UserDetail, CreateUserRequest, UpdateUserRequest, Paginated } from "../types";
 
 export const adminUsuariosService = {
   list: (params: {
@@ -35,6 +35,12 @@ export const adminUsuariosService = {
 
   baja: (id: string, motivo?: string) =>
     apiClient.post<void>(`/users/${id}/baja`, { motivo: motivo ?? "" }),
+
+  getOne: (id: string) =>
+    apiClient.get<UserDetail>(`/users/${id}`),
+
+  update: (id: string, data: UpdateUserRequest) =>
+    apiClient.patch<UserDetail>(`/users/${id}`, data),
 };
 
 // ── Invitaciones ──────────────────────────────────────────────────────────────

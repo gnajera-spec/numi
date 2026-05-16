@@ -12,11 +12,12 @@ import { NumiLogo } from './NumiLogo';
 
 /* ── Nav items ───────────────────────────────────────────────────────────── */
 const rrhhNavItems = [
-  { to: '/admin/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
-  { to: '/admin/licencias',      label: 'Licencias',      icon: Calendar },
-  { to: '/admin/comunicaciones', label: 'Comunicaciones', icon: MessageSquare },
-  { to: '/admin/recibos',        label: 'Recibos',        icon: FileText },
-  { to: '/admin/reports',        label: 'Reportes',       icon: BarChart2 },
+  { to: '/admin/dashboard',       label: 'Dashboard',       icon: LayoutDashboard },
+  { to: '/admin/colaboradores',   label: 'Colaboradores',   icon: Users },
+  { to: '/admin/licencias',       label: 'Licencias',       icon: Calendar },
+  { to: '/admin/comunicaciones',  label: 'Comunicaciones',  icon: MessageSquare },
+  { to: '/admin/recibos',         label: 'Recibos',         icon: FileText },
+  { to: '/admin/reports',         label: 'Reportes',        icon: BarChart2 },
 ];
 const adminOnlyNavItems = [
   { to: '/admin/usuarios',     label: 'Usuarios',     icon: Users },

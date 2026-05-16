@@ -176,7 +176,7 @@ class UserService:
         if isinstance(data, UpdateOwnProfileRequest):
             if str(user["id"]) != str(current_user["id"]):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "Sin permisos")
-            await self._colaboradores.update(user_id, data.model_dump(exclude_none=True))
+            await self._colaboradores.update(user_id, user["tenant_id"], data.model_dump(exclude_none=True))
         else:
             # rrhh+ updating any user in their tenant
             user_payload = data.model_dump(include={"first_name", "last_name"}, exclude_none=True)
@@ -185,10 +185,9 @@ class UserService:
 
             profile_payload = data.model_dump(
                 include={"sede_id", "departamento_id", "puesto_id", "convenio_id", "legajo", "tipo_contrato", "fecha_ingreso"},
-                exclude_none=True,
             )
-            if profile_payload and user.get("role") == "colaborador":
-                await self._colaboradores.update(user_id, profile_payload)
+            if any(v is not None for v in profile_payload.values()) and user.get("role") == "colaborador":
+                await self._colaboradores.update(user_id, user["tenant_id"], profile_payload)
 
         full = await self._users.get_by_id_with_profile(user_id)
         return UserDetail.model_validate(full)

@@ -26,6 +26,8 @@ import { SuperAdminLoginPage } from "./pages/superadmin/SuperAdminLoginPage";
 import { SuperAdminTenantsPage } from "./pages/superadmin/SuperAdminTenantsPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { AdminSmtpConfigPage } from "./pages/admin/AdminSmtpConfigPage";
+import { AdminColaboradoresPage } from "./pages/admin/AdminColaboradoresPage";
+import { AdminColaboradorDetailPage } from "./pages/admin/AdminColaboradorDetailPage";
 import { useAuth } from "./contexts/AuthContext";
 
 const ADMIN_ROLES = ["rrhh", "admin_empresa", "super_admin", "servicio_medico"];
@@ -91,6 +93,22 @@ function AdminAppInner() {
         element={
           <RoleGuardRoute allowedRoles={["super_admin", "rrhh"]}>
             <AdminDashboardPage />
+          </RoleGuardRoute>
+        }
+      />
+      <Route
+        path="colaboradores"
+        element={
+          <RoleGuardRoute allowedRoles={["super_admin", "rrhh"]}>
+            <AdminColaboradoresPage />
+          </RoleGuardRoute>
+        }
+      />
+      <Route
+        path="colaboradores/:id"
+        element={
+          <RoleGuardRoute allowedRoles={["super_admin", "rrhh"]}>
+            <AdminColaboradorDetailPage />
           </RoleGuardRoute>
         }
       />
