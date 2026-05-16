@@ -10,6 +10,8 @@ from app.repositories.departamento_repository import DepartamentoRepository
 from app.repositories.puesto_repository import PuestoRepository
 from app.repositories.sede_repository import SedeRepository
 from app.repositories.tenant_repository import TenantRepository
+from app.repositories.user_repository import UserRepository
+from app.schemas.user import UserSummary
 from app.schemas.tenants import (
     ConvenioCreate,
     ConvenioOut,
@@ -25,12 +27,19 @@ from app.schemas.tenants import (
     SedeCreate,
     SedeOut,
     SedeUpdate,
+    SetRolesRequest,
     TenantBrandingUpdate,
     TenantCreate,
+    TenantCreateResponse,
     TenantOut,
     TenantUpdate,
 )
 from app.services.tenant_service import TenantService
+
+from pydantic import BaseModel
+
+class SetAdminRequest(BaseModel):
+    role: str = "admin_empresa"  # permite también rrhh, colaborador, etc.
 
 router = APIRouter(tags=["tenants"])
 
@@ -42,6 +51,7 @@ def _get_service(db: AsyncClient = Depends(get_supabase)) -> TenantService:
         deptos=DepartamentoRepository(db),
         puestos=PuestoRepository(db),
         convenios=ConvenioRepository(db),
+        users=UserRepository(db),
     )
 
 
@@ -60,7 +70,7 @@ async def list_tenants(
     return await service.list_tenants(estado, plan, search, page, page_size)
 
 
-@router.post("/tenants", response_model=TenantOut, status_code=201)
+@router.post("/tenants", response_model=TenantCreateResponse, status_code=201)
 async def create_tenant(
     body: TenantCreate,
     current_user: dict = Depends(require_role("super_admin")),
@@ -103,6 +113,53 @@ async def update_tenant(
     service: TenantService = Depends(_get_service),
 ) -> TenantOut:
     return await service.update_tenant(str(tenant_id), body)
+
+
+
+
+# ── Usuarios por tenant (super_admin) ────────────────────────────────────────
+
+@router.get("/tenants/{tenant_id}/users", response_model=list[UserSummary])
+async def list_tenant_users(
+    tenant_id: UUID,
+    current_user: dict = Depends(require_role("super_admin")),
+    db: AsyncClient = Depends(get_supabase),
+):
+    """Lista todos los usuarios de un tenant específico."""
+    users = await UserRepository(db).list_users_by_tenant(str(tenant_id))
+    return [UserSummary.model_validate(u) for u in users]
+
+
+@router.patch("/tenants/{tenant_id}/users/{user_id}/set-role", response_model=UserSummary)
+async def set_tenant_user_role(
+    tenant_id: UUID,
+    user_id: UUID,
+    body: SetAdminRequest,
+    current_user: dict = Depends(require_role("super_admin")),
+    db: AsyncClient = Depends(get_supabase),
+):
+    """Cambia el rol de un usuario dentro de un tenant."""
+    from fastapi import HTTPException, status
+    updated = await UserRepository(db).set_role(str(user_id), body.role, str(tenant_id))
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuario no encontrado en este tenant")
+    return UserSummary.model_validate(updated)
+
+
+@router.patch("/tenants/{tenant_id}/users/{user_id}/set-roles", response_model=UserSummary)
+async def set_tenant_user_roles(
+    tenant_id: UUID,
+    user_id: UUID,
+    body: SetRolesRequest,
+    current_user: dict = Depends(require_role("super_admin")),
+    db: AsyncClient = Depends(get_supabase),
+):
+    """Asigna múltiples roles a un usuario dentro de un tenant."""
+    from fastapi import HTTPException, status
+    updated = await UserRepository(db).set_roles(str(user_id), body.roles, str(tenant_id))
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuario no encontrado en este tenant")
+    return UserSummary.model_validate(updated)
 
 
 # ── Sedes ─────────────────────────────────────────────────────────────────────

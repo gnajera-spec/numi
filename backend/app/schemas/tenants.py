@@ -58,6 +58,25 @@ class TenantOut(TenantSummary):
     updated_at: datetime
 
 
+class TenantCreateResponse(TenantOut):
+    admin_email: str
+    initial_password: str
+
+
+_ALLOWED_TENANT_ROLES = {"colaborador", "rrhh", "admin_empresa", "servicio_medico"}
+
+class SetRolesRequest(BaseModel):
+    roles: list[str] = Field(..., min_length=1)
+
+    @field_validator("roles")
+    @classmethod
+    def validate_roles(cls, v: list[str]) -> list[str]:
+        invalid = set(v) - _ALLOWED_TENANT_ROLES
+        if invalid:
+            raise ValueError(f"Roles inválidos: {', '.join(sorted(invalid))}")
+        return list(set(v))  # deduplicate
+
+
 class PaginatedTenants(BaseModel):
     total: int
     page: int

@@ -4,7 +4,9 @@ estructura organizacional: sedes, departamentos, puestos, convenios.
 """
 import math
 import logging
+import secrets
 
+import bcrypt
 from fastapi import HTTPException, status
 
 from app.repositories.convenio_repository import ConvenioRepository
@@ -12,6 +14,7 @@ from app.repositories.departamento_repository import DepartamentoRepository
 from app.repositories.puesto_repository import PuestoRepository
 from app.repositories.sede_repository import SedeRepository
 from app.repositories.tenant_repository import TenantRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.tenants import (
     ConvenioCreate,
     ConvenioOut,
@@ -29,6 +32,7 @@ from app.schemas.tenants import (
     SedeUpdate,
     TenantBrandingUpdate,
     TenantCreate,
+    TenantCreateResponse,
     TenantOut,
     TenantSummary,
     TenantUpdate,
@@ -45,12 +49,14 @@ class TenantService:
         deptos: DepartamentoRepository,
         puestos: PuestoRepository,
         convenios: ConvenioRepository,
+        users: UserRepository | None = None,
     ) -> None:
         self._tenants = tenants
         self._sedes = sedes
         self._deptos = deptos
         self._puestos = puestos
         self._convenios = convenios
+        self._users = users
 
     # ── Tenants (super_admin) ─────────────────────────────────────────────────
 
@@ -71,17 +77,33 @@ class TenantService:
             items=[TenantSummary(**r) for r in rows],
         )
 
-    async def create_tenant(self, body: TenantCreate) -> TenantOut:
+    async def create_tenant(self, body: TenantCreate) -> TenantCreateResponse:
         if await self._tenants.get_by_cuit(body.cuit):
             raise HTTPException(status.HTTP_409_CONFLICT, detail="CUIT ya registrado")
         if await self._tenants.get_by_subdominio(body.subdominio):
             raise HTTPException(status.HTTP_409_CONFLICT, detail="Subdominio ya registrado")
 
         data = body.model_dump(exclude={"admin_email", "admin_first_name", "admin_last_name"})
-        row = await self._tenants.create(data)
-        # La creación del admin_empresa se realiza en una tarea de fondo fuera de scope v1
-        # (requiere invite_token + email; pendiente DT)
-        return TenantOut(**row)
+        tenant_row = await self._tenants.create(data)
+
+        initial_password = secrets.token_urlsafe(12)
+        password_hash = bcrypt.hashpw(initial_password.encode(), bcrypt.gensalt()).decode()
+        if self._users:
+            await self._users.create_with_password({
+                "tenant_id": str(tenant_row["id"]),
+                "email": body.admin_email,
+                "first_name": body.admin_first_name,
+                "last_name": body.admin_last_name,
+                "role": "admin_empresa",
+                "estado": "activo",
+                "password_hash": password_hash,
+            })
+
+        return TenantCreateResponse(
+            **tenant_row,
+            admin_email=body.admin_email,
+            initial_password=initial_password,
+        )
 
     async def get_tenant(self, tenant_id: str) -> TenantOut:
         row = await self._tenants.get(tenant_id)
