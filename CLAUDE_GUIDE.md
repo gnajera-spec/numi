@@ -29,10 +29,10 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-v1.5 — REQ_14 + UI Connect completado
+v1.6 — Calendario de ausencias + UI completo
 Última actualización: 2026-05-16
-Tests: 26 (test_flujo_aprobacion_service.py) — 140 totales
-Commits pendientes: ninguno (commit aec624d)
+Tests: 140 totales
+Commits pendientes: ninguno (último: 91777bd)
 ```
 
 ### En este momento estoy trabajando en
@@ -99,6 +99,7 @@ Credenciales demo (DEV):
 | Fase 11 | Módulo Colaboradores RRHH (lista + editor legajo) | ✅ Completada | 2026-05-16 |
 | Fase 12 | Módulo Configuración Admin Empresa + AdminLayout unificado | ✅ Completada | 2026-05-16 |
 | Fase 13 | REQ_14 — Flujos de aprobación parametrizables (multi-paso, por rol/departamento) | ✅ Completada | 2026-05-16 |
+| Fase 14 | Calendario de ausencias RRHH (RF-08-23) + UI full connect + panel pendientes colaborador | ✅ Completada | 2026-05-16 |
 
 ---
 
