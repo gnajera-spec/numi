@@ -23,13 +23,6 @@ const estadoLabel: Record<EstadoUsuario, string> = {
   baja:       "De baja",
 };
 
-const CONTRATOS = [
-  { value: "indefinido",  label: "Indefinido" },
-  { value: "determinado", label: "A término" },
-  { value: "eventual",    label: "Eventual" },
-  { value: "pasantia",    label: "Pasantía" },
-];
-
 /* ── Field label ─────────────────────────────────────────────────────────── */
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -143,7 +136,6 @@ export function AdminColaboradorDetailPage() {
   const [puestoId, setPuestoId]       = useState("");
   const [convenioId, setConvenioId]   = useState("");
   const [legajo, setLegajo]           = useState("");
-  const [tipoContrato, setTipoContrato] = useState("");
   const [fechaIngreso, setFechaIngreso] = useState("");
 
   useEffect(() => {
@@ -171,7 +163,6 @@ export function AdminColaboradorDetailPage() {
         setPuestoId(p?.puesto_id ?? "");
         setConvenioId(p?.convenio_id ?? "");
         setLegajo(p?.legajo ?? "");
-        setTipoContrato(p?.tipo_contrato ?? "");
         setFechaIngreso(p?.fecha_ingreso ?? "");
       })
       .catch(err => setError(err instanceof Error ? err.message : "Error al cargar colaborador"))
@@ -192,7 +183,6 @@ export function AdminColaboradorDetailPage() {
         puesto_id: puestoId || null,
         convenio_id: convenioId || null,
         legajo: legajo.trim() || null,
-        tipo_contrato: tipoContrato || null,
         fecha_ingreso: fechaIngreso || null,
       };
       const updated = await adminUsuariosService.update(id, payload);
@@ -295,14 +285,6 @@ export function AdminColaboradorDetailPage() {
         <Section title="Legajo laboral">
           <Field label="N° de legajo">
             <TextInput value={legajo} onChange={setLegajo} placeholder="Ej: 001234" />
-          </Field>
-          <Field label="Tipo de contrato">
-            <SelectInput value={tipoContrato} onChange={setTipoContrato}>
-              <option value="">Sin especificar</option>
-              {CONTRATOS.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </SelectInput>
           </Field>
           <Field label="Fecha de ingreso">
             <input
