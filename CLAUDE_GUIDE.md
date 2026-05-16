@@ -29,25 +29,24 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-v1.5 — REQ_14 Flujos de aprobación parametrizables
+v1.5 — REQ_14 + UI Connect completado
 Última actualización: 2026-05-16
-Tests: 26 nuevos (test_flujo_aprobacion_service.py) — 140 totales (excluyendo recibo_service pre-existente)
-Commits pendientes: sí (sesiones 18 + 19)
+Tests: 26 (test_flujo_aprobacion_service.py) — 140 totales
+Commits pendientes: ninguno (commit aec624d)
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada en progreso — REQ_14 implementado, sin commitear.
+Nada en progreso.
 ```
 
 ### Próximo paso concreto
 ```
-1. Commitear cambios de sesión 18 + 19 (Configuración Admin + REQ_14 flujos)
-2. Aplicar AMBAS migraciones pendientes en Supabase dashboard:
+1. Aplicar AMBAS migraciones en Supabase dashboard:
    a) supabase/migrations/20260516000000_add_medical_fields_to_solicitudes.sql
    b) supabase/migrations/20260516300000_add_flujos_aprobacion.sql
-3. QA: crear flujo en /admin/configuracion/aprobaciones, crear solicitud, verificar aprobaciones_solicitud
-4. Deploy a Render
+2. QA flujo completo REQ_14: crear flujo → crear solicitud → aprobar paso a paso
+3. Deploy a Render
 ```
 
 ### Bloqueantes activos
@@ -75,14 +74,9 @@ Credenciales demo (DEV):
 
 ### Pendiente para próxima sesión
 ```
-1. Commitear cambios de sesión 18 + 19 (un solo commit o dos separados)
-2. Aplicar migraciones en Supabase dashboard (ver Próximo paso concreto)
-3. Conectar AdminTiposLicenciasPage al backend (hoy usa datos mock)
-4. Conectar AdminSmtpConfigPage al backend via smtpConfigService
-5. QA flujo completo REQ_14: crear flujo → crear solicitud → aprobar paso a paso
-6. Historial de aprobación visible en AdminLicenciasPage (falta UI en detalle de solicitud)
-7. Panel "Pendientes de mi aprobación" en portal colaborador (para pasos tipo departamento)
-8. Deploy a Render (opcional)
+1. Aplicar migraciones en Supabase dashboard (ver Próximo paso concreto)
+2. QA flujo completo REQ_14: crear flujo → crear solicitud → aprobar paso a paso
+3. Deploy a Render
 ```
 
 ---
