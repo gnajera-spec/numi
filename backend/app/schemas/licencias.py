@@ -99,6 +99,11 @@ class SolicitudLicenciaOut(BaseModel):
     canal: str
     documentos: list[dict] = []
     created_at: datetime
+    # Medical fields
+    medico_nombre: str | None = None
+    medico_apellido: str | None = None
+    medico_matricula: str | None = None
+    dias_reposo: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -126,6 +131,10 @@ class SolicitudLicenciaOut(BaseModel):
             canal=row["canal"],
             documentos=row.get("documentos_solicitud") or [],
             created_at=row["created_at"],
+            medico_nombre=row.get("medico_nombre"),
+            medico_apellido=row.get("medico_apellido"),
+            medico_matricula=row.get("medico_matricula"),
+            dias_reposo=row.get("dias_reposo"),
         )
 
 
@@ -135,6 +144,11 @@ class CreateSolicitudRequest(BaseModel):
     fecha_fin: date
     comentario: str | None = Field(default=None, max_length=500)
     user_id: UUID | None = None  # only rrhh+ can set this
+    # Medical license fields
+    medico_nombre: str | None = Field(default=None, max_length=100)
+    medico_apellido: str | None = Field(default=None, max_length=100)
+    medico_matricula: str | None = Field(default=None, max_length=50)
+    dias_reposo: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_fechas(self) -> "CreateSolicitudRequest":

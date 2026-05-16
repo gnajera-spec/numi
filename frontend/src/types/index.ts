@@ -93,6 +93,11 @@ export interface SolicitudLicencia {
   comentario_colaborador?: string;
   comentario_revisor?: string;
   created_at: string;
+  // Medical fields
+  medico_nombre?: string;
+  medico_apellido?: string;
+  medico_matricula?: string;
+  dias_reposo?: number;
 }
 
 export interface SaldoLicencia {
@@ -111,8 +116,11 @@ export interface NuevaSolicitud {
   fecha_inicio: string;
   fecha_fin: string;
   comentario?: string;
+  // Medical fields
   medico_nombre?: string;
+  medico_apellido?: string;
   medico_matricula?: string;
+  dias_reposo?: number;
 }
 
 // Comunicaciones

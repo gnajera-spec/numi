@@ -148,6 +148,20 @@ class LicenciaService:
         if not tipo:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
 
+        # Validate medical fields for medical license types
+        if tipo.get("es_medica"):
+            missing = [f for f, v in [
+                ("medico_nombre", data.medico_nombre),
+                ("medico_apellido", data.medico_apellido),
+                ("medico_matricula", data.medico_matricula),
+                ("dias_reposo", data.dias_reposo),
+            ] if not v]
+            if missing:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    f"Campos requeridos para licencia médica: {', '.join(missing)}"
+                )
+
         # Validate dias_maximos
         dias = _calc_dias_habiles(data.fecha_inicio, data.fecha_fin)
         if tipo.get("dias_maximos") and dias > tipo["dias_maximos"]:
@@ -167,7 +181,7 @@ class LicenciaService:
             )
 
         # Create solicitud
-        row = await self._solicitudes.create({
+        payload: dict = {
             "tenant_id": tenant_id,
             "user_id": target_user_id,
             "tipo_licencia_id": str(data.tipo_licencia_id),
@@ -177,7 +191,15 @@ class LicenciaService:
             "estado": "pendiente",
             "comentario_empleado": data.comentario,
             "canal": canal,
-        })
+        }
+        if tipo.get("es_medica"):
+            payload.update({
+                "medico_nombre": data.medico_nombre,
+                "medico_apellido": data.medico_apellido,
+                "medico_matricula": data.medico_matricula,
+                "dias_reposo": data.dias_reposo,
+            })
+        row = await self._solicitudes.create(payload)
 
         # Update saldo: increment dias_pendientes
         anio = data.fecha_inicio.year
