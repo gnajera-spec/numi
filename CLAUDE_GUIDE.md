@@ -68,14 +68,20 @@ Módulos nuevos implementados pero NO commiteados (trabajo en progreso):
 - Backend corre en :8000, frontend en :5173 o :5174 según disponibilidad
 - reset_superadmin.py en backend/ — script de utilidad (no commitear)
 - iniciar_backend.command — script de conveniencia para iniciar backend en Mac (no commitear)
+- Frontend corre en :5580 (no :5173/:5174)
+
+Credenciales demo (DEV):
+  Super Admin     superadmin@softlink.com.ar / SuperAdmin1234  → http://localhost:5580/superadmin/login
+  Admin Empresa   adminempresa@demo.com      / Admin1234       → http://localhost:5580/admin/login
+  RRHH            rrhh@demo.com              / Rrhh1234        → http://localhost:5580/admin/login
+  Servicio Médico medico@demo.com            / Medico1234      → http://localhost:5580/admin/login
+  Colaborador     colab@demo.com             / Colab1234       → http://localhost:5580/employee/login
 ```
 
 ### Pendiente para próxima sesión
 ```
-1. Commitear módulos nuevos (invitaciones, smtp, superadmin, onboarding, tipos-licencias)
-2. Escribir tests para invitacion_service y smtp_service
-3. Aplicar migraciones pendientes en Supabase remoto
-4. Opciones adicionales: Deploy a Render, validación end-to-end en DEV, WhatsApp con ngrok
+1. QA end-to-end en DEV — validar todos los flujos con las credenciales demo
+2. Opciones adicionales: Deploy a Render, WhatsApp con ngrok
 ```
 
 ---
