@@ -1,8 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, BarChart2, LogOut, Users, Calendar, MessageSquare,
-  FileText, Building2, Stethoscope, AlertTriangle, Activity, Settings,
-  ChevronUp, Check, Menu, X, UserCircle2, Briefcase,
+  LayoutDashboard, BarChart2, LogOut, Users, Calendar, CalendarDays,
+  MessageSquare, FileText, Building2, Stethoscope, AlertTriangle,
+  Activity, Settings, ChevronUp, Check, Menu, X, UserCircle2, Briefcase,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,7 @@ import { NumiLogo } from './NumiLogo';
 const rrhhNavItems = [
   { to: '/admin/dashboard',    label: 'Dashboard',      icon: LayoutDashboard },
   { to: '/admin/licencias',    label: 'Licencias',      icon: Calendar },
+  { to: '/admin/calendario',   label: 'Calendario',     icon: CalendarDays },
   { to: '/admin/comunicaciones', label: 'Comunicaciones', icon: MessageSquare },
   { to: '/admin/recibos',      label: 'Recibos',        icon: FileText },
   { to: '/admin/usuarios',     label: 'Usuarios',       icon: Users },

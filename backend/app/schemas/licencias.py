@@ -209,3 +209,16 @@ class SaldoLicenciaOut(BaseModel):
 class PaginatedSolicitudes(BaseModel):
     data: list[SolicitudLicenciaOut]
     pagination: Pagination
+
+
+# ── Calendario ────────────────────────────────────────────────────────────────
+
+class CalendarioItemOut(BaseModel):
+    id: UUID
+    user_id: UUID
+    user_nombre: str
+    tipo_licencia: TipoLicenciaRef
+    fecha_inicio: date
+    fecha_fin: date
+    dias_habiles: int
+    estado: str

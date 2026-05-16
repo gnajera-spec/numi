@@ -1,6 +1,17 @@
 import { apiClient } from "../lib/apiClient";
 import type { SolicitudLicencia, Paginated } from "../types";
 
+export interface CalendarioItem {
+  id: string;
+  user_id: string;
+  user_nombre: string;
+  tipo_licencia: { id: string; codigo: string; nombre: string };
+  fecha_inicio: string;
+  fecha_fin: string;
+  dias_habiles: number;
+  estado: string;
+}
+
 export const adminLicenciasService = {
   listSolicitudes: (params: {
     estado?: string;
@@ -38,6 +49,12 @@ export const adminLicenciasService = {
 
   getHistorial: (id: string) =>
     apiClient.get<AprobacionPaso[]>(`/licencias/solicitudes/${id}/historial-aprobacion`),
+
+  getCalendario: (mes: string, departamento_id?: string) => {
+    const qs = new URLSearchParams({ mes });
+    if (departamento_id) qs.set("departamento_id", departamento_id);
+    return apiClient.get<CalendarioItem[]>(`/licencias/calendario?${qs}`);
+  },
 };
 
 export interface AprobacionPaso {

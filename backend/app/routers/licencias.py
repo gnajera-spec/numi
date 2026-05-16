@@ -21,6 +21,7 @@ from app.schemas.flujos_aprobacion import (
 )
 from app.schemas.licencias import (
     AprobarSolicitudRequest,
+    CalendarioItemOut,
     CreatePoliticaRequest,
     CreateSolicitudRequest,
     CreateTipoLicenciaRequest,
@@ -50,6 +51,18 @@ def _get_service(db: AsyncClient = Depends(get_supabase)) -> LicenciaService:
         aprobacion_repo=AprobacionSolicitudRepository(db),
         colaborador_repo=ColaboradorRepository(db),
     )
+
+
+# ── Calendario ───────────────────────────────────────────────────────────────
+
+@router.get("/calendario", response_model=list[CalendarioItemOut])
+async def get_calendario(
+    mes: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="YYYY-MM"),
+    departamento_id: str | None = Query(None),
+    current_user: dict = Depends(require_role("rrhh", "admin_empresa", "super_admin")),
+    svc: LicenciaService = Depends(_get_service),
+):
+    return await svc.get_calendario(current_user, mes, departamento_id)
 
 
 # ── Tipos de licencia ─────────────────────────────────────────────────────────

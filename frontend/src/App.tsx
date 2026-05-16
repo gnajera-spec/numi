@@ -27,6 +27,7 @@ import { AdminSmtpConfigPage } from "./pages/admin/AdminSmtpConfigPage";
 import { AdminAprobacionesConfigPage } from "./pages/admin/AdminAprobacionesConfigPage";
 import { FlujoDiseñadorPage } from "./pages/admin/FlujoDiseñadorPage";
 import { AdminConfiguracionPage } from "./pages/admin/AdminConfiguracionPage";
+import { AdminCalendarioPage } from "./pages/admin/AdminCalendarioPage";
 import { useAuth } from "./contexts/AuthContext";
 
 const ADMIN_ROLES = ["rrhh", "admin_empresa", "super_admin", "servicio_medico"];
@@ -85,6 +86,7 @@ function AdminAppInner() {
       <Route path="configuracion/aprobaciones" element={<AdminAprobacionesConfigPage />} />
       <Route path="configuracion/aprobaciones/nuevo" element={<FlujoDiseñadorPage />} />
       <Route path="configuracion/aprobaciones/:flujoId" element={<FlujoDiseñadorPage />} />
+      <Route path="calendario" element={<AdminCalendarioPage />} />
       <Route path="*" element={<Navigate to={defaultRoute} replace />} />
     </Routes>
   );

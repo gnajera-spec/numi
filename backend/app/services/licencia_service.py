@@ -1,3 +1,4 @@
+import calendar
 import logging
 import math
 from datetime import date, datetime, timedelta, timezone
@@ -23,6 +24,7 @@ from app.schemas.flujos_aprobacion import (
 )
 from app.schemas.licencias import (
     AprobarSolicitudRequest,
+    CalendarioItemOut,
     CreatePoliticaRequest,
     CreateSolicitudRequest,
     CreateTipoLicenciaRequest,
@@ -31,6 +33,7 @@ from app.schemas.licencias import (
     RechazarSolicitudRequest,
     SaldoLicenciaOut,
     SolicitudLicenciaOut,
+    TipoLicenciaRef,
     TipoLicenciaOut,
     UpdateTipoLicenciaRequest,
 )
@@ -408,6 +411,56 @@ class LicenciaService:
         anio = anio or datetime.now(timezone.utc).year
         rows = await self._saldos.list_for_user(tenant_id, user_id, anio)
         return [SaldoLicenciaOut.from_row(r) for r in rows]
+
+    # ── Calendario ────────────────────────────────────────────────────────────
+
+    async def get_calendario(
+        self,
+        current_user: dict,
+        mes: str,
+        departamento_id: str | None = None,
+    ) -> list[CalendarioItemOut]:
+        tenant_id = str(current_user["tenant_id"])
+
+        # Parse "YYYY-MM" into date range
+        year, month = int(mes[:4]), int(mes[5:7])
+        mes_inicio = f"{year}-{month:02d}-01"
+        last_day = calendar.monthrange(year, month)[1]
+        mes_fin = f"{year}-{month:02d}-{last_day:02d}"
+
+        user_ids: list[str] | None = None
+        if departamento_id:
+            res = await self._db.table("colaborador_perfil").select("user_id").eq("tenant_id", tenant_id).eq("departamento_id", departamento_id).execute()
+            user_ids = [r["user_id"] for r in (res.data or [])]
+            if not user_ids:
+                return []
+
+        rows = await self._solicitudes.list_for_calendar(tenant_id, mes_inicio, mes_fin, user_ids)
+        if not rows:
+            return []
+
+        unique_uids = list({r["user_id"] for r in rows})
+        users_res = await self._db.table("users").select("id, first_name, last_name").in_("id", unique_uids).execute()
+        name_map = {u["id"]: f"{u['first_name']} {u['last_name']}".strip() for u in (users_res.data or [])}
+
+        result: list[CalendarioItemOut] = []
+        for r in rows:
+            tipo_data = r.get("tipos_licencia") or {}
+            result.append(CalendarioItemOut(
+                id=r["id"],
+                user_id=r["user_id"],
+                user_nombre=name_map.get(r["user_id"], ""),
+                tipo_licencia=TipoLicenciaRef(
+                    id=tipo_data.get("id", r["tipo_licencia_id"]),
+                    codigo=tipo_data.get("codigo", ""),
+                    nombre=tipo_data.get("nombre", ""),
+                ),
+                fecha_inicio=r["fecha_inicio"],
+                fecha_fin=r["fecha_fin"],
+                dias_habiles=r["dias_habiles"],
+                estado=r["estado"],
+            ))
+        return result
 
     # ── Flujo: paso-based approval ────────────────────────────────────────────
 
