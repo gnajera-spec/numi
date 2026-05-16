@@ -22,7 +22,7 @@ ALTER TABLE flujos_aprobacion ENABLE ROW LEVEL SECURITY;
 
 CREATE TRIGGER flujos_aprobacion_updated_at
   BEFORE UPDATE ON flujos_aprobacion
-  FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ─── pasos_flujo ──────────────────────────────────────────────────────────────
 CREATE TABLE pasos_flujo (
@@ -92,7 +92,7 @@ ALTER TABLE aprobaciones_solicitud ENABLE ROW LEVEL SECURITY;
 
 CREATE TRIGGER aprobaciones_solicitud_updated_at
   BEFORE UPDATE ON aprobaciones_solicitud
-  FOR EACH ROW EXECUTE FUNCTION moddatetime(updated_at);
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ─── Modificar solicitudes_licencia ──────────────────────────────────────────
 ALTER TABLE solicitudes_licencia
