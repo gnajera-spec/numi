@@ -82,16 +82,16 @@ export interface TipoLicencia {
 
 export interface SolicitudLicencia {
   id: string;
-  numero: string;
-  tipo_licencia_id: string;
-  tipo_licencia_nombre: string;
-  tipo_licencia_codigo: string;
+  numero_solicitud: string;
+  tipo_licencia: { id: string; codigo: string; nombre: string };
   fecha_inicio: string;
   fecha_fin: string;
   dias_habiles: number;
   estado: EstadoSolicitud;
-  comentario_colaborador?: string;
-  comentario_revisor?: string;
+  comentario_empleado?: string;
+  comentario_rrhh?: string;
+  revisado_por?: { id: string; first_name: string; last_name: string } | null;
+  revisado_at?: string | null;
   created_at: string;
   // Medical fields
   medico_nombre?: string;

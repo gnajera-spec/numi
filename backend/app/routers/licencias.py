@@ -96,7 +96,7 @@ async def list_solicitudes(
     user_id: UUID | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: dict = Depends(require_role("rrhh")),
+    current_user: dict = Depends(require_role("rrhh", "servicio_medico", "admin_empresa")),
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.list_solicitudes(
@@ -161,7 +161,7 @@ async def get_solicitud(
 async def aprobar_solicitud(
     solicitud_id: UUID,
     body: AprobarSolicitudRequest,
-    current_user: dict = Depends(require_role("rrhh")),
+    current_user: dict = Depends(require_role("rrhh", "servicio_medico", "admin_empresa")),
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.aprobar_solicitud(solicitud_id, current_user, body)
@@ -171,7 +171,7 @@ async def aprobar_solicitud(
 async def rechazar_solicitud(
     solicitud_id: UUID,
     body: RechazarSolicitudRequest,
-    current_user: dict = Depends(require_role("rrhh")),
+    current_user: dict = Depends(require_role("rrhh", "servicio_medico", "admin_empresa")),
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.rechazar_solicitud(solicitud_id, current_user, body)

@@ -61,6 +61,10 @@ function Field({ label, required, children }: { label: string; required?: boolea
 const inputCls = "rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-offset-0";
 const inputStyle = { borderColor: "var(--color-surface-border)", color: "var(--color-content-primary)", background: "var(--color-surface-card)" };
 
+// Parse YYYY-MM-DD strings without UTC offset shift
+const parseLocalDate = (s: string) => new Date(s + "T12:00:00");
+const fmtDate = (s: string) => parseLocalDate(s).toLocaleDateString("es-AR");
+
 // ── Medical leave form ────────────────────────────────────────────────────────
 
 interface MedicalFormProps {
@@ -87,10 +91,10 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
 
   const set = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
 
-  // Compute fecha_fin from fecha_inicio + dias_reposo
+  // Compute fecha_fin from fecha_inicio + dias_reposo (T12:00:00 avoids UTC midnight shift)
   const fechaFin = (() => {
     if (!form.fecha_inicio || !form.dias_reposo) return null;
-    const d = new Date(form.fecha_inicio);
+    const d = parseLocalDate(form.fecha_inicio);
     d.setDate(d.getDate() + parseInt(form.dias_reposo) - 1);
     return d;
   })();
@@ -133,20 +137,6 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {error && <ErrorBanner message={error} />}
-
-      <Field label="Tipo de licencia" required>
-        <select
-          required
-          value={form.tipo_licencia_id}
-          onChange={(e) => set("tipo_licencia_id", e.target.value)}
-          className={inputCls}
-          style={inputStyle}
-        >
-          {tiposMedicos.map((t) => (
-            <option key={t.id} value={t.id}>{t.nombre}</option>
-          ))}
-        </select>
-      </Field>
 
       {/* Doctor info */}
       <div className="grid grid-cols-2 gap-3">
@@ -198,13 +188,13 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
             style={inputStyle}
           />
         </Field>
-        <Field label="Días de reposo (según prescripción)" required>
+        <Field label="Días de reposo" required>
           <input
             type="number"
             required
             min={1}
             max={365}
-            placeholder="Ej: 7"
+            placeholder="7"
             value={form.dias_reposo}
             onChange={(e) => set("dias_reposo", e.target.value)}
             className={inputCls}
@@ -220,7 +210,7 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
         >
           <Calendar size={13} />
           <span>
-            Período: <strong>{new Date(form.fecha_inicio).toLocaleDateString("es-AR")}</strong>
+            Período: <strong>{fmtDate(form.fecha_inicio)}</strong>
             {" → "}
             <strong>{fechaFin!.toLocaleDateString("es-AR")}</strong>
             {" · Alta médica prevista: "}
@@ -307,20 +297,19 @@ function AdminLeaveForm({ tipos, saldos, onClose, onCreated }: AdminFormProps) {
 
   const set = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
 
-  const tipoSeleccionado = tiposAdmin.find((t) => t.id === form.tipo_licencia_id);
   const saldoDisponible = saldos.find((s) => s.tipo_licencia_id === form.tipo_licencia_id);
 
   const diasSolicitados =
     form.fecha_inicio && form.fecha_fin
       ? Math.max(0, Math.round(
-          (new Date(form.fecha_fin).getTime() - new Date(form.fecha_inicio).getTime()) /
+          (parseLocalDate(form.fecha_fin).getTime() - parseLocalDate(form.fecha_inicio).getTime()) /
             (1000 * 60 * 60 * 24)
         ) + 1)
       : 0;
 
   const retornoLaboral = form.fecha_fin
     ? (() => {
-        const d = new Date(form.fecha_fin);
+        const d = parseLocalDate(form.fecha_fin);
         d.setDate(d.getDate() + 1);
         return d;
       })()
@@ -439,15 +428,6 @@ function AdminLeaveForm({ tipos, saldos, onClose, onCreated }: AdminFormProps) {
           )}
         </label>
       </Field>
-
-      {tipoSeleccionado?.requiere_certificado && !adjunto && (
-        <p
-          className="text-xs rounded-lg px-3 py-2 -mt-2"
-          style={{ background: "#fef0ee", color: "var(--color-state-absent)" }}
-        >
-          Este tipo de licencia requiere comprobante. Podés adjuntarlo ahora o después de crear la solicitud.
-        </p>
-      )}
 
       <Field label="Comentario (opcional)">
         <textarea
@@ -665,7 +645,7 @@ export function LeavesPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           {esMedica && <Stethoscope size={13} style={{ color: "var(--color-content-secondary)" }} />}
                           <span className="font-semibold text-sm" style={{ color: "var(--color-content-primary)" }}>
-                            {sol.tipo_licencia_nombre}
+                            {sol.tipo_licencia.nombre}
                           </span>
                           <span
                             className="text-xs font-semibold rounded-full px-2.5 py-0.5"
@@ -675,8 +655,8 @@ export function LeavesPage() {
                           </span>
                         </div>
                         <p className="text-xs mt-1" style={{ color: "var(--color-content-secondary)" }}>
-                          {new Date(sol.fecha_inicio).toLocaleDateString("es-AR")} →{" "}
-                          {new Date(sol.fecha_fin).toLocaleDateString("es-AR")} · {sol.dias_habiles} días
+                          {fmtDate(sol.fecha_inicio)} →{" "}
+                          {fmtDate(sol.fecha_fin)} · {sol.dias_habiles} días
                           {sol.dias_reposo && ` · ${sol.dias_reposo} días según prescripción`}
                         </p>
                         {esMedica && sol.medico_nombre && (
@@ -685,9 +665,9 @@ export function LeavesPage() {
                             {sol.medico_matricula && ` · Mat. ${sol.medico_matricula}`}
                           </p>
                         )}
-                        {sol.comentario_revisor && (
+                        {sol.comentario_rrhh && (
                           <p className="text-xs mt-1 italic" style={{ color: "var(--color-content-secondary)" }}>
-                            "{sol.comentario_revisor}"
+                            "{sol.comentario_rrhh}"
                           </p>
                         )}
                       </div>

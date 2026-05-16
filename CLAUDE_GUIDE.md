@@ -29,46 +29,43 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-v1.1 — módulos de invitaciones + SMTP + superadmin panel en progreso
-Última actualización: 2026-05-15
-Tests: 195 pasando (nuevos módulos sin tests aún)
-Commits pendientes: MUCHOS — 57 archivos modificados + nuevos módulos sin commitear
+v1.2 — QA completado, bugs críticos corregidos, licencias médicas/administrativas separadas
+Última actualización: 2026-05-16
+Tests: 251 pasando
+Commits pendientes: ninguno
 ```
 
 ### En este momento estoy trabajando en
 ```
-Módulos nuevos implementados pero NO commiteados (trabajo en progreso):
-- Invitaciones: onboarding self-service por email (individual + lote + CSV)
-- SMTP: configuración por tenant (custom o servidor de NUMI)
-- SuperAdmin portal: /superadmin/* con gestión de tenants y roles multi-usuario
-- Onboarding: página pública /onboarding/:token para colaboradores invitados
-- AdminTiposLicencias: gestión de tipos de licencia desde admin (/admin/tipos-licencias)
-- Migración: roles[] array en users + tabla invitaciones + tabla smtp_config (en backend/migrations/)
+Nada en progreso — sistema estable, todo commiteado.
 ```
 
 ### Próximo paso concreto
 ```
-1. Commitear el trabajo no commiteado de Fase 9 (frontend + nuevos módulos backend)
-2. Validación end-to-end en DEV con seed_demo.py
+1. Aplicar migración pendiente en Supabase:
+   ALTER TABLE solicitudes_licencia
+     ADD COLUMN IF NOT EXISTS medico_nombre text,
+     ADD COLUMN IF NOT EXISTS medico_apellido text,
+     ADD COLUMN IF NOT EXISTS medico_matricula text,
+     ADD COLUMN IF NOT EXISTS dias_reposo integer;
+   (archivo: supabase/migrations/20260516000000_add_medical_fields_to_solicitudes.sql)
+2. QA del flujo de licencias médicas (una vez aplicada la migración)
+3. Deploy a Render cuando esté listo
 ```
 
 ### Bloqueantes activos
 ```
-- Trabajo no commiteado de Fase 9: frontend refactors, nuevos módulos backend sin commitear aún
 - Para activar WA en dev: configurar META_VERIFY_TOKEN + META_APP_SECRET en .env local + ngrok para webhook
 - Para notificaciones reales: cada tenant debe hacer PUT /whatsapp/config con su access_token de Meta
-- ALLOWED_ORIGINS en .env local: ["http://localhost:5173","http://localhost:5174"]
 - uvicorn --reload NO detecta cambios en .env — reiniciar manualmente si se cambia
 ```
 
 ### Notas de desarrollo local
 ```
 - seed_demo.py en backend/ para seed de datos de prueba (no commitear — tiene service_role_key)
-  Credenciales demo: colab@demo.com / Colab1234 | admin@demo.com / Admin1234
-- Backend corre en :8000, frontend en :5173 o :5174 según disponibilidad
+- Backend corre en :8000, frontend en :5580
 - reset_superadmin.py en backend/ — script de utilidad (no commitear)
 - iniciar_backend.command — script de conveniencia para iniciar backend en Mac (no commitear)
-- Frontend corre en :5580 (no :5173/:5174)
 
 Credenciales demo (DEV):
   Super Admin     superadmin@softlink.com.ar / SuperAdmin1234  → http://localhost:5580/superadmin/login
@@ -80,8 +77,10 @@ Credenciales demo (DEV):
 
 ### Pendiente para próxima sesión
 ```
-1. QA end-to-end en DEV — validar todos los flujos con las credenciales demo
-2. Opciones adicionales: Deploy a Render, WhatsApp con ngrok
+1. Aplicar migración 20260516000000_add_medical_fields_to_solicitudes.sql en Supabase dashboard
+2. QA flujo completo de licencias (médica + administrativa) con colaborador demo
+3. Deploy a Render (opcional)
+4. WhatsApp con ngrok (opcional)
 ```
 
 ---
@@ -99,7 +98,8 @@ Credenciales demo (DEV):
 | Fase 6 | Portal Web del colaborador | ✅ Completada | 2026-05-12 |
 | Fase 7 | Servicio Médico | ✅ Completada | 2026-05-12 |
 | Fase 8 | Reportes + Dashboard RRHH | ✅ Completada | 2026-05-12 |
-| Fase 9 | Invitaciones + SMTP + SuperAdmin panel | 🔄 En progreso (sin commit, sin tests) | 2026-05-15 |
+| Fase 9 | Invitaciones + SMTP + SuperAdmin panel | ✅ Completada | 2026-05-15 |
+| Fase 10 | QA + bugfixes + licencias médicas/administrativas | ✅ Completada | 2026-05-16 |
 
 ---
 
@@ -225,7 +225,7 @@ frontend/src/
     pages/ActivatePage.tsx        ✅ /employee/activate?token=...
     pages/DashboardPage.tsx       ✅ /employee/dashboard — accesos directos + badge pendientes
     pages/ReceiptsPage.tsx        ✅ /employee/receipts — lista + descarga + modal firma
-    pages/LeavesPage.tsx          ✅ /employee/leaves — saldo + historial + modal nueva solicitud
+    pages/LeavesPage.tsx          ✅ /employee/leaves — saldo + historial + modal nueva solicitud (toggle Médica/Administrativa)
     pages/CommunicationsPage.tsx  ✅ /employee/communications — lista + filtros + modal detalle/confirmación
     pages/ProfilePage.tsx         ✅ /employee/profile — datos + cambio de contraseña + MFA setup/disable
 
@@ -243,16 +243,16 @@ frontend/src/
     pages/admin/AdminRecibosPage.tsx        ✅ /admin/recibos — períodos + upload ZIP/PDF + preview + confirm + dashboard recibos
     pages/admin/AdminUsuariosPage.tsx       ✅ /admin/usuarios — lista + search + crear + suspend/reactivate/baja + reinvitar
     pages/admin/AdminOrganizacionPage.tsx   ✅ /admin/organizacion — 4 tabs (Sedes, Departamentos árbol, Puestos, Convenios), create modal + toggle activo/inactivo
-    pages/admin/AdminSmtpConfigPage.tsx     🔄 /admin/configuracion/smtp — toggle NUMI vs custom SMTP, form, test conexión
-    pages/admin/AdminTiposLicenciasPage.tsx 🔄 /admin/tipos-licencias — lista, crear, eliminar tipos de licencia
+    pages/admin/AdminSmtpConfigPage.tsx     ✅ /admin/configuracion/smtp — toggle NUMI vs custom SMTP, form, test conexión
+    pages/admin/AdminTiposLicenciasPage.tsx ✅ /admin/tipos-licencias — lista, crear, eliminar tipos de licencia
 
   Portal colaborador (público):
-    pages/OnboardingPage.tsx               🔄 /onboarding/:token — formulario self-service para colaboradores invitados
+    pages/OnboardingPage.tsx               ✅ /onboarding/:token — formulario self-service para colaboradores invitados
 
   Portal SuperAdmin (/superadmin/*):
-    components/SuperAdminLayout.tsx        🔄 Sidebar NUMI branding + nav (Empresas) + logout
-    pages/superadmin/SuperAdminLoginPage.tsx  🔄 /superadmin/login — login para super_admin
-    pages/superadmin/SuperAdminTenantsPage.tsx 🔄 /superadmin/tenants — gestión global de tenants: list/search/filter, create, edit, manage users con roles múltiples
+    components/SuperAdminLayout.tsx        ✅ Sidebar NUMI branding + nav (Empresas) + logout
+    pages/superadmin/SuperAdminLoginPage.tsx  ✅ /superadmin/login — login para super_admin
+    pages/superadmin/SuperAdminTenantsPage.tsx ✅ /superadmin/tenants — gestión global de tenants: list/search/filter, create, edit, manage users con roles múltiples
 
   Portal médico (/admin/medico/*):
     pages/admin/AdminMedicoFichasPage.tsx      ✅ /admin/medico/fichas — lista + modal detalle (ficha, exámenes, aptitudes, vacunaciones)
@@ -272,8 +272,8 @@ app/routers/
   medico.py        ✅ GET /medico/fichas, GET|PUT /medico/fichas/{user_id}, GET|POST /medico/examenes/{user_id}, GET|POST /medico/vacunaciones/{user_id}, GET|POST /medico/aptitudes/{user_id}, GET|POST /medico/accidentes, PATCH /medico/accidentes/{id}, GET /medico/reportes/absentismo, GET /medico/reportes/aptitudes-por-vencer
   reportes.py      ✅ GET /reportes/dashboard, GET /reportes/headcount, GET /reportes/licencias, GET /reportes/export/licencias, GET /reportes/export/comunicaciones
   tenants.py       ✅ GET|POST /tenants, GET|PATCH /tenants/{id}, GET /tenants/me, PATCH /tenants/me/branding, GET|POST /sedes, PATCH /sedes/{id}, GET|POST /departamentos, PATCH /departamentos/{id}, GET|POST /puestos, PATCH /puestos/{id}, GET|POST /convenios
-  invitaciones.py  🔄 POST /admin/invitaciones/individual, /admin/invitaciones/lote, /admin/invitaciones/lote/csv, GET /onboarding/{token}, POST /onboarding/{token}/completar
-  smtp_config.py   🔄 GET /admin/configuracion/smtp, PUT /admin/configuracion/smtp, POST /admin/configuracion/smtp/test
+  invitaciones.py  ✅ POST /admin/invitaciones/individual, /admin/invitaciones/lote, /admin/invitaciones/lote/csv, GET /onboarding/{token}, POST /onboarding/{token}/completar
+  smtp_config.py   ✅ GET /admin/configuracion/smtp, PUT /admin/configuracion/smtp, POST /admin/configuracion/smtp/test
 ```
 
 ### Repositorios implementados
@@ -307,8 +307,8 @@ app/repositories/
   convenio_repository.py                   ✅ list, get_by_nombre, create
   upload_job_repository.py                 ✅ create, get, delete — jobs en DB con TTL 1h (reemplaza dict en memoria, DT-005)
   mfa_repository.py                        ✅ get_secret, save_secret, is_enabled, save_backup_codes, use_backup_code
-  invitacion_repository.py                 🔄 get_by_token, get_by_cuil_and_tenant, create, mark_completed, list_by_tenant
-  smtp_config_repository.py                🔄 get_by_tenant, upsert
+  invitacion_repository.py                 ✅ get_by_token, get_by_cuil_and_tenant, create, mark_completed, list_by_tenant
+  smtp_config_repository.py                ✅ get_by_tenant, upsert
 ```
 
 ### Servicios del backend
@@ -323,8 +323,8 @@ app/services/
   reporte_service.py  ✅ dashboard KPIs (asyncio.gather), headcount, tendencia, exports CSV
   tenant_service.py   ✅ CRUD tenants + árbol departamentos (_build_tree) + validaciones
   whatsapp_service.py ✅ FSM (idle→menu→recibos/licencias/comunicaciones), verify_webhook, HMAC, notify
-  invitacion_service.py 🔄 invitar_individual, invitar_lote, parse_csv, get_token_info, completar_onboarding
-  smtp_service.py    🔄 get_config, send_invitation (template email), test_connection — soporta TLS/SSL, desencripta password
+  invitacion_service.py ✅ invitar_individual, invitar_lote, parse_csv, get_token_info, completar_onboarding
+  smtp_service.py    ✅ get_config, send_invitation (template email), test_connection — soporta TLS/SSL, desencripta password
 ```
 
 ### Variables de entorno requeridas

@@ -7,7 +7,8 @@ from supabase._async.client import AsyncClient
 _SELECT_FULL = (
     "*, "
     "tipos_licencia(id, codigo, nombre), "
-    "documentos_solicitud(*)"
+    "documentos_solicitud(*), "
+    "revisado_por_user:users!revisado_por(id, first_name, last_name)"
 )
 
 
@@ -27,6 +28,9 @@ class SolicitudLicenciaRepository:
             "comentario_empleado": data.get("comentario_empleado"),
             "canal": data.get("canal", "portal"),
         }
+        for field in ("medico_nombre", "medico_apellido", "medico_matricula", "dias_reposo"):
+            if data.get(field) is not None:
+                payload[field] = data[field]
         res = await (
             self._db.table("solicitudes_licencia")
             .insert(payload)
@@ -138,7 +142,6 @@ class SolicitudLicenciaRepository:
             .update(payload)
             .eq("id", str(solicitud_id))
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0]

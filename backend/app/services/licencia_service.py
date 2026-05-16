@@ -241,6 +241,14 @@ class LicenciaService:
                 f"No se puede aprobar una solicitud en estado '{row['estado']}'"
             )
 
+        # servicio_medico can only approve medical license types
+        reviewer_role = current_user.get("role", "")
+        tipo = await self._tipos.get(row["tipo_licencia_id"], str(row["tenant_id"]))
+        if reviewer_role == "servicio_medico" and not (tipo or {}).get("es_medica"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Servicio médico solo puede aprobar licencias médicas")
+        if reviewer_role == "rrhh" and (tipo or {}).get("es_medica"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "RRHH solo puede aprobar licencias administrativas")
+
         updated = await self._solicitudes.update_estado(
             solicitud_id,
             "aprobada",
@@ -281,6 +289,13 @@ class LicenciaService:
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 f"No se puede rechazar una solicitud en estado '{row['estado']}'"
             )
+
+        reviewer_role = current_user.get("role", "")
+        tipo = await self._tipos.get(row["tipo_licencia_id"], str(row["tenant_id"]))
+        if reviewer_role == "servicio_medico" and not (tipo or {}).get("es_medica"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Servicio médico solo puede rechazar licencias médicas")
+        if reviewer_role == "rrhh" and (tipo or {}).get("es_medica"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "RRHH solo puede rechazar licencias administrativas")
 
         updated = await self._solicitudes.update_estado(
             solicitud_id,

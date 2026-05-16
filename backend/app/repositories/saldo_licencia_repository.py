@@ -21,7 +21,7 @@ class SaldoLicenciaRepository:
             .maybe_single()
             .execute()
         )
-        return res.data
+        return res.data if res else None
 
     async def list_for_user(self, tenant_id: str, user_id: str | UUID, anio: int) -> list[dict]:
         res = await (
@@ -59,7 +59,7 @@ class SaldoLicenciaRepository:
             .select(_SELECT_FULL)
             .execute()
         )
-        return res.data
+        return res.data[0]
 
     async def add_pendientes(self, tenant_id: str, user_id: str, tipo_licencia_id: str, anio: int, dias: int) -> None:
         """Increment dias_pendientes when a solicitud is created."""

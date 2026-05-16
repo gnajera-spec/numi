@@ -9,6 +9,9 @@ import { adminLicenciasService } from "../../services/adminLicenciasService";
 import { Badge, estadoToVariant } from "../../components/Badge";
 import type { SolicitudLicencia, EstadoSolicitud } from "../../types";
 
+const parseLocalDate = (s: string) => new Date(s + "T12:00:00");
+const fmtDate = (s: string) => parseLocalDate(s).toLocaleDateString("es-AR");
+
 const estadoBadge: Record<EstadoSolicitud, { label: string; color: string; bg: string }> = {
   pendiente: { label: "Pendiente", color: "#fff", bg: "var(--color-state-pending)" },
   aprobada: { label: "Aprobada", color: "#fff", bg: "var(--color-state-present)" },
@@ -76,14 +79,14 @@ function ReviewModal({ solicitud, action, onClose, onDone }: ReviewModalProps) {
           style={{ background: "var(--color-surface-empty)", borderColor: "var(--color-surface-border)" }}
         >
           <p className="text-sm font-semibold" style={{ color: "var(--color-content-primary)" }}>
-            {solicitud.tipo_licencia_nombre}
+            {solicitud.tipo_licencia.nombre}
           </p>
           <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
-            {new Date(solicitud.fecha_inicio).toLocaleDateString("es-AR")} →{" "}
-            {new Date(solicitud.fecha_fin).toLocaleDateString("es-AR")} · {solicitud.dias_habiles} días
+            {fmtDate(solicitud.fecha_inicio)} →{" "}
+            {fmtDate(solicitud.fecha_fin)} · {solicitud.dias_habiles} días
           </p>
           <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
-            Nº {solicitud.numero}
+            Nº {solicitud.numero_solicitud}
           </p>
         </div>
 
@@ -208,25 +211,25 @@ export function AdminLicenciasPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-semibold text-sm" style={{ color: "var(--color-content-primary)" }}>
-                        {sol.tipo_licencia_nombre}
+                        {sol.tipo_licencia.nombre}
                       </span>
                       <Badge variant={estadoToVariant(sol.estado)} label={badge.label} />
                       <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
-                        Nº {sol.numero}
+                        Nº {sol.numero_solicitud}
                       </span>
                     </div>
                     <p className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
-                      {new Date(sol.fecha_inicio).toLocaleDateString("es-AR")} →{" "}
-                      {new Date(sol.fecha_fin).toLocaleDateString("es-AR")} · {sol.dias_habiles} días hábiles
+                      {fmtDate(sol.fecha_inicio)} →{" "}
+                      {fmtDate(sol.fecha_fin)} · {sol.dias_habiles} días hábiles
                     </p>
-                    {sol.comentario_colaborador && (
+                    {sol.comentario_empleado && (
                       <p className="text-xs mt-1 italic" style={{ color: "var(--color-content-secondary)" }}>
-                        "{sol.comentario_colaborador}"
+                        "{sol.comentario_empleado}"
                       </p>
                     )}
-                    {sol.comentario_revisor && (
+                    {sol.comentario_rrhh && (
                       <p className="text-xs mt-1" style={{ color: "var(--color-content-secondary)" }}>
-                        Revisor: "{sol.comentario_revisor}"
+                        Revisor: "{sol.comentario_rrhh}"
                       </p>
                     )}
                   </div>
