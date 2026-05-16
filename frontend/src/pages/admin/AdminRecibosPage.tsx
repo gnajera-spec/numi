@@ -647,12 +647,12 @@ export function AdminRecibosPage() {
                       <span
                         className="text-xs font-semibold rounded-full px-2.5 py-0.5 border"
                         style={{
-                          color: p.estado === "abierto" ? "var(--color-primary)" : "var(--color-content-secondary)",
-                          borderColor: p.estado === "abierto" ? "var(--color-primary)" : "var(--color-surface-border)",
+                          color: p.estado === "borrador" ? "var(--color-primary)" : "var(--color-content-secondary)",
+                          borderColor: p.estado === "borrador" ? "var(--color-primary)" : "var(--color-surface-border)",
                           background: "transparent",
                         }}
                       >
-                        {p.estado === "abierto" ? "Abierto" : "Cerrado"}
+                        {p.estado === "borrador" ? "Borrador" : p.estado === "distribuido" ? "Distribuido" : "Cerrado"}
                       </span>
                     </div>
 

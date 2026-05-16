@@ -8,7 +8,7 @@ import type {
   Paginated,
 } from "../types";
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
 export const adminRecibosService = {
   listPeriodos: (params: { estado?: string; page?: number; page_size?: number } = {}) => {

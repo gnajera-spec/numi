@@ -21,6 +21,7 @@
 | 11 | [REQ_11_portal_web.md](REQ_11_portal_web.md) | Portal Web del Colaborador | Alta | ⏳ Pendiente |
 | 12 | [REQ_12_no_funcionales.md](REQ_12_no_funcionales.md) | Requerimientos No Funcionales | Alta | ⏳ Pendiente |
 | 13 | [REQ_13_criterios_aceptacion.md](REQ_13_criterios_aceptacion.md) | Criterios de Aceptación | Alta | ⏳ Pendiente |
+| 14 | [REQ_14_flujos_aprobacion.md](REQ_14_flujos_aprobacion.md) | Parametrización de Flujos de Aprobación | Alta | 🔄 En curso |
 
 **Estados:** ✅ Completo · 🔄 En curso · ⏳ Pendiente · 🚫 Bloqueado
 
@@ -50,7 +51,8 @@ REQ_02 (Multi-Tenant)
         ├── REQ_06 (Recibos) ◄── REQ_10         │
         ├── REQ_07 (Comunicaciones) ◄── REQ_10  │
         ├── REQ_08 (Licencias) ◄── REQ_10       │
-        │     └── REQ_09 (Servicio Médico)      │
+        │     ├── REQ_09 (Servicio Médico)      │
+        │     └── REQ_14 (Flujos Aprobación)    │
         └── REQ_11 (Portal Web) ◄───────────────┘
                                     (mismo backend)
 ```

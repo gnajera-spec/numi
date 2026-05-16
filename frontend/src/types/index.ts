@@ -225,7 +225,7 @@ export interface UpdateUserRequest {
 }
 
 // Admin — Periodos de liquidación
-export type EstadoPeriodo = "abierto" | "cerrado";
+export type EstadoPeriodo = "borrador" | "distribuido" | "cerrado";
 
 export interface PeriodoLiquidacion {
   id: string;

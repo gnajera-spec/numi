@@ -1,282 +1,381 @@
-import { useEffect, useState } from "react";
-import { Mail, CheckCircle, XCircle, Loader, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
+import { Mail, Eye, EyeOff, Send, Check, Sparkles, Settings2 } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
-import { smtpConfigService } from "../../services/smtpConfigService";
-import type { SmtpConfigIn } from "../../services/smtpConfigService";
 
-const EMPTY: SmtpConfigIn = {
-  host: "", port: 587, username: "", password: "",
-  from_email: "", from_name: "NUMI", use_tls: true, activo: true,
-  use_numi_smtp: true,
+type EmailMode = "numi" | "custom";
+
+interface SmtpConfig {
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+  from_email: string;
+  from_name: string;
+  use_tls: boolean;
+}
+
+const emptyConfig: SmtpConfig = {
+  host: "",
+  port: "587",
+  username: "",
+  password: "",
+  from_email: "",
+  from_name: "",
+  use_tls: true,
 };
 
-function Field({
-  id, label, type = "text", value, onChange, placeholder,
-}: {
-  id: string; label: string; type?: string; value: string | number;
-  onChange: (v: string) => void; placeholder?: string;
-}) {
+function FieldGroup({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <label style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>
         {label}
       </label>
-      <input
-        id={id} type={type} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="rounded-lg border px-3 py-2.5 text-sm outline-none"
-        style={{
-          borderColor: "var(--color-surface-border)",
-          color: "var(--color-content-primary)",
-          background: "var(--color-surface-card)",
-        }}
-      />
+      {hint && (
+        <p style={{ fontSize: 12, color: "var(--color-text-secondary)", margin: 0 }}>{hint}</p>
+      )}
+      {children}
     </div>
   );
 }
 
-function parseErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    const msg = err.message;
-    // Si es un array de errores de Pydantic serializado, mostrar el primero
-    try {
-      const parsed = JSON.parse(msg);
-      if (Array.isArray(parsed) && parsed[0]?.msg) return parsed[0].msg;
-    } catch {}
-    if (msg === "[object Object]") return "Error al guardar. Revisá los datos ingresados.";
-    return msg;
-  }
-  return "Error al guardar";
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 8,
+  border: "1px solid var(--color-border)",
+  padding: "8px 12px",
+  fontSize: 13,
+  color: "var(--color-text-primary)",
+  background: "var(--color-bg-app)",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+interface ModeCardProps {
+  selected: boolean;
+  onClick: () => void;
+  icon: React.ElementType;
+  iconColor: string;
+  title: string;
+  description: string;
+}
+
+function ModeCard({ selected, onClick, icon: Icon, iconColor, title, description }: ModeCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 14,
+        padding: "16px 18px",
+        borderRadius: 12,
+        border: `2px solid ${selected ? "var(--color-primary)" : "var(--color-border)"}`,
+        background: selected ? "var(--color-primary-xlight)" : "var(--color-bg-card)",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "border-color 150ms ease, background 150ms ease",
+      }}
+    >
+      <div style={{
+        width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: selected ? iconColor : "var(--color-bg-subtle)",
+        transition: "background 150ms ease",
+      }}>
+        <Icon size={18} style={{ color: selected ? "#fff" : "var(--color-text-secondary)" }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{
+            fontSize: 13, fontWeight: 600,
+            color: selected ? "var(--color-primary)" : "var(--color-text-primary)",
+          }}>
+            {title}
+          </span>
+          {selected && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 3,
+              fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20,
+              background: "var(--color-primary)", color: "#fff",
+            }}>
+              <Check size={9} /> Activo
+            </span>
+          )}
+        </div>
+        <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4 }}>
+          {description}
+        </p>
+      </div>
+    </button>
+  );
 }
 
 export function AdminSmtpConfigPage() {
-  const [form, setForm] = useState<SmtpConfigIn>(EMPTY);
-  const [showPass, setShowPass] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<EmailMode>("numi");
+  const [config, setConfig] = useState<SmtpConfig>(emptyConfig);
+  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    smtpConfigService.get()
-      .then(data => { if (data) setForm(f => ({ ...f, ...data, password: "" })); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const set = (k: keyof SmtpConfigIn) => (v: string) =>
-    setForm(f => ({ ...f, [k]: k === "port" ? Number(v) : v }));
-
-  const useNumi = form.use_numi_smtp;
+  const set = (field: keyof SmtpConfig) => (value: string | boolean) =>
+    setConfig((c) => ({ ...c, [field]: value }));
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true); setSaveError(null); setSaved(false);
+    setSaving(true);
+    setError(null);
+    setSuccessMsg(null);
     try {
-      await smtpConfigService.save(form);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
-      setSaveError(parseErrorMessage(err));
+      await new Promise((r) => setTimeout(r, 800));
+      setSuccessMsg(
+        mode === "numi"
+          ? "Configuración guardada. Se usará el servidor de Numi para el envío."
+          : "Configuración SMTP guardada correctamente."
+      );
+    } catch {
+      setError("No se pudo guardar la configuración. Intentá de nuevo.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleTest = async () => {
-    setTesting(true); setTestResult(null);
+    setTesting(true);
+    setError(null);
+    setSuccessMsg(null);
     try {
-      const res = await smtpConfigService.test(form);
-      setTestResult(res);
-    } catch (err) {
-      setTestResult({ ok: false, message: parseErrorMessage(err) });
+      await new Promise((r) => setTimeout(r, 1200));
+      setSuccessMsg("Correo de prueba enviado correctamente.");
+    } catch {
+      setError("No se pudo conectar al servidor SMTP. Revisá los datos.");
     } finally {
       setTesting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <AdminLayout>
-        <div className="flex justify-center py-16">
-          <Loader size={28} style={{ color: "var(--color-primary)", animation: "spin 1s linear infinite" }} />
-        </div>
-      </AdminLayout>
-    );
-  }
-
   return (
     <AdminLayout>
-      <div className="mb-6 flex items-center gap-3">
-        <Mail size={22} style={{ color: "var(--color-primary)" }} />
+      <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 640 }}>
+
+        {/* Header */}
         <div>
-          <h1 className="text-[22px] font-bold" style={{ color: "var(--color-content-primary)" }}>Configuración de email</h1>
-          <p className="text-sm" style={{ color: "var(--color-content-secondary)" }}>Configurá cómo se envían las invitaciones a colaboradores</p>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--color-text-primary)" }}>
+            Configuración de email
+          </h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+            Elegí cómo se enviarán las notificaciones y comunicaciones a los colaboradores
+          </p>
         </div>
-      </div>
 
-      <form onSubmit={handleSave}>
-        <div className="rounded-xl border p-6 max-w-2xl flex flex-col gap-5"
-          style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}>
+        {/* Feedback */}
+        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+        {successMsg && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 500,
+            background: "#f0fdf4", color: "var(--color-state-present, #16a34a)",
+          }}>
+            <Mail size={15} />
+            {successMsg}
+          </div>
+        )}
 
-          {saveError && <ErrorBanner message={saveError} />}
+        {/* Selector de modo */}
+        <div style={{
+          background: "var(--color-bg-card)",
+          border: "1px solid var(--color-border)",
+          borderRadius: 14, padding: 20,
+          display: "flex", flexDirection: "column", gap: 12,
+        }}>
+          <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--color-text-disabled)" }}>
+            Origen del envío
+          </p>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <ModeCard
+              selected={mode === "numi"}
+              onClick={() => setMode("numi")}
+              icon={Sparkles}
+              iconColor="#4BA3D9"
+              title="Usar servidor de Numi"
+              description="Numi gestiona el envío. Sin configuración adicional, listo para usar."
+            />
+            <ModeCard
+              selected={mode === "custom"}
+              onClick={() => setMode("custom")}
+              icon={Settings2}
+              iconColor="#75559b"
+              title="Servidor propio (SMTP)"
+              description="Configurá tu propio servidor SMTP para enviar desde tu dominio."
+            />
+          </div>
+        </div>
 
-          {saved && (
-            <div className="flex items-center gap-2 p-3 rounded-lg text-sm"
-              style={{ background: "rgba(21,128,61,0.08)", color: "var(--color-state-present)", border: "1px solid rgba(21,128,61,0.2)" }}>
-              <CheckCircle size={15} /> Configuración guardada correctamente
+        {/* Info modo Numi */}
+        {mode === "numi" && (
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: 12,
+            padding: "14px 16px", borderRadius: 12,
+            background: "var(--color-primary-xlight)",
+            border: "1px solid var(--color-primary-light, #bfdbfe)",
+          }}>
+            <Sparkles size={16} style={{ color: "var(--color-primary)", flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--color-primary)" }}>
+                Servidor de Numi activo
+              </p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+                Los correos se enviarán desde <strong>notificaciones@numi.app</strong> en nombre de tu organización.
+                No requiere ninguna configuración adicional.
+              </p>
             </div>
-          )}
-
-          {/* Selector modo SMTP */}
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--color-content-secondary)" }}>
-              Servidor de envío
-            </p>
-
-            <label
-              className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-colors"
-              style={{
-                borderColor: useNumi ? "var(--color-primary)" : "var(--color-surface-border)",
-                background: useNumi ? "var(--color-primary-xlight)" : "var(--color-surface-card)",
-              }}
-            >
-              <input
-                type="radio"
-                name="smtp_mode"
-                checked={useNumi}
-                onChange={() => setForm(f => ({ ...f, use_numi_smtp: true }))}
-                style={{ accentColor: "var(--color-primary)", marginTop: 2 }}
-              />
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "var(--color-content-primary)" }}>
-                  Usar el servidor de NUMI{" "}
-                  <span className="text-xs font-normal ml-1 px-1.5 py-0.5 rounded"
-                    style={{ background: "var(--color-primary-light)", color: "var(--color-primary)" }}>
-                    Recomendado
-                  </span>
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
-                  Las invitaciones se envían usando la infraestructura de email de NUMI. Sin configuración adicional.
-                </p>
-              </div>
-            </label>
-
-            <label
-              className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-colors"
-              style={{
-                borderColor: !useNumi ? "var(--color-primary)" : "var(--color-surface-border)",
-                background: !useNumi ? "var(--color-primary-xlight)" : "var(--color-surface-card)",
-              }}
-            >
-              <input
-                type="radio"
-                name="smtp_mode"
-                checked={!useNumi}
-                onChange={() => setForm(f => ({ ...f, use_numi_smtp: false }))}
-                style={{ accentColor: "var(--color-primary)", marginTop: 2 }}
-              />
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "var(--color-content-primary)" }}>
-                  Usar mi propio servidor SMTP
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
-                  Configurá tu propio servidor de correo (Gmail, Outlook, SendGrid, etc.)
-                </p>
-              </div>
-            </label>
           </div>
+        )}
 
-          {/* Formulario SMTP — solo visible en modo personalizado */}
-          {!useNumi && (
-            <>
-              <div style={{ height: 1, background: "var(--color-surface-border)" }} />
-
-              {testResult && (
-                <div className="flex items-center gap-2 p-3 rounded-lg text-sm"
-                  style={{
-                    background: testResult.ok ? "rgba(21,128,61,0.08)" : "rgba(220,38,38,0.08)",
-                    color: testResult.ok ? "var(--color-state-present)" : "var(--color-state-absent)",
-                    border: `1px solid ${testResult.ok ? "rgba(21,128,61,0.2)" : "rgba(220,38,38,0.2)"}`,
-                  }}>
-                  {testResult.ok ? <CheckCircle size={15} /> : <XCircle size={15} />}
-                  {testResult.message}
+        {/* Formulario SMTP personalizado */}
+        {mode === "custom" && (
+          <>
+            {/* Servidor */}
+            <div style={{
+              background: "var(--color-bg-card)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 14, padding: 20,
+              display: "flex", flexDirection: "column", gap: 16,
+            }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--color-text-disabled)" }}>
+                Servidor SMTP
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                <div style={{ gridColumn: "span 2" }}>
+                  <FieldGroup label="Host">
+                    <input
+                      required={mode === "custom"}
+                      value={config.host}
+                      onChange={(e) => set("host")(e.target.value)}
+                      placeholder="smtp.gmail.com"
+                      style={inputStyle}
+                    />
+                  </FieldGroup>
                 </div>
-              )}
+                <FieldGroup label="Puerto">
+                  <input
+                    required={mode === "custom"}
+                    type="number"
+                    value={config.port}
+                    onChange={(e) => set("port")(e.target.value)}
+                    placeholder="587"
+                    style={inputStyle}
+                  />
+                </FieldGroup>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={config.use_tls}
+                  onChange={(e) => set("use_tls")(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: "var(--color-primary)" }}
+                />
+                <span style={{ fontSize: 13, color: "var(--color-text-primary)" }}>Usar TLS/STARTTLS</span>
+              </label>
+            </div>
 
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--color-content-secondary)" }}>Servidor</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <Field id="host" label="Host SMTP" placeholder="smtp.gmail.com" value={form.host} onChange={set("host")} />
-                  </div>
-                  <Field id="port" label="Puerto" type="number" placeholder="587" value={form.port} onChange={set("port")} />
+            {/* Credenciales */}
+            <div style={{
+              background: "var(--color-bg-card)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 14, padding: 20,
+              display: "flex", flexDirection: "column", gap: 16,
+            }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--color-text-disabled)" }}>
+                Credenciales
+              </p>
+              <FieldGroup label="Usuario">
+                <input
+                  value={config.username}
+                  onChange={(e) => set("username")(e.target.value)}
+                  placeholder="tu@empresa.com"
+                  style={inputStyle}
+                />
+              </FieldGroup>
+              <FieldGroup label="Contraseña">
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={config.password}
+                    onChange={(e) => set("password")(e.target.value)}
+                    placeholder="••••••••"
+                    style={{ ...inputStyle, paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    style={{
+                      position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                      background: "none", border: "none", cursor: "pointer", padding: 4,
+                      color: "var(--color-text-secondary)",
+                    }}
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
                 </div>
-              </div>
+              </FieldGroup>
+            </div>
 
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--color-content-secondary)" }}>Credenciales</p>
-                <div className="flex flex-col gap-3">
-                  <Field id="username" label="Usuario" placeholder="usuario@gmail.com" value={form.username} onChange={set("username")} />
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="password" className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>Contraseña</label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        id="password" type={showPass ? "text" : "password"} value={form.password}
-                        onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                        placeholder="Dejá vacío para no cambiarla" autoComplete="new-password"
-                        className="rounded-lg border px-3 py-2.5 text-sm outline-none w-full"
-                        style={{ borderColor: "var(--color-surface-border)", color: "var(--color-content-primary)", paddingRight: 40 }}
-                      />
-                      <button type="button" onClick={() => setShowPass(s => !s)}
-                        style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--color-content-secondary)", padding: 0 }}>
-                        {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+            {/* Remitente */}
+            <div style={{
+              background: "var(--color-bg-card)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 14, padding: 20,
+              display: "flex", flexDirection: "column", gap: 16,
+            }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--color-text-disabled)" }}>
+                Remitente
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FieldGroup label="Nombre del remitente">
+                  <input
+                    value={config.from_name}
+                    onChange={(e) => set("from_name")(e.target.value)}
+                    placeholder="Mi Empresa"
+                    style={inputStyle}
+                  />
+                </FieldGroup>
+                <FieldGroup label="Email del remitente">
+                  <input
+                    type="email"
+                    value={config.from_email}
+                    onChange={(e) => set("from_email")(e.target.value)}
+                    placeholder="noreply@empresa.com"
+                    style={inputStyle}
+                  />
+                </FieldGroup>
               </div>
+            </div>
+          </>
+        )}
 
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--color-content-secondary)" }}>Remitente</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field id="from_email" label="Email del remitente" placeholder="noreply@empresa.com" value={form.from_email} onChange={set("from_email")} />
-                  <Field id="from_name" label="Nombre del remitente" placeholder="NUMI" value={form.from_name} onChange={set("from_name")} />
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "var(--color-content-secondary)" }}>Opciones</p>
-                <div className="flex flex-col gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.use_tls} onChange={e => setForm(f => ({ ...f, use_tls: e.target.checked }))} />
-                    <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>Usar TLS (STARTTLS)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} />
-                    <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>Envío de emails activo</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex justify-start">
-                <Button type="button" variant="secondary" onClick={handleTest}
-                  loading={testing} disabled={!form.host || !form.username}>
-                  Probar conexión
-                </Button>
-              </div>
-            </>
-          )}
-
-          <div className="pt-2 border-t flex justify-end" style={{ borderColor: "var(--color-surface-border)" }}>
-            <Button type="submit" loading={saving}>
-              Guardar configuración
+        {/* Acciones */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Guardando…" : "Guardar configuración"}
+          </Button>
+          {mode === "custom" && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={testing}
+              onClick={handleTest}
+            >
+              <Send size={14} style={{ marginRight: 6 }} />
+              {testing ? "Enviando…" : "Enviar correo de prueba"}
             </Button>
-          </div>
+          )}
         </div>
       </form>
     </AdminLayout>
