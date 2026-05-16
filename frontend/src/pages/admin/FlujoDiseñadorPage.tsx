@@ -4,12 +4,8 @@ import { ArrowLeft, Plus, X, ChevronDown, ChevronUp, AlertTriangle } from "lucid
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
-import {
-  flujoAprobacionService,
-  DepartamentoOption,
-  PasoFlujoCreate,
-  FlujoAprobacionOut,
-} from "../../services/flujoAprobacionService";
+import { flujoAprobacionService } from "../../services/flujoAprobacionService";
+import type { DepartamentoOption, PasoFlujoCreate, FlujoAprobacionOut } from "../../services/flujoAprobacionService";
 
 const ROL_OPTIONS = [
   { value: "rrhh", label: "RR.HH." },

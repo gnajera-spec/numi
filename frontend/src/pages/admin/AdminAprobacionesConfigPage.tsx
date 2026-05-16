@@ -4,7 +4,8 @@ import { GitBranch, Plus, Edit2, ToggleLeft, CheckCircle, AlertCircle } from "lu
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
-import { flujoAprobacionService, TipoLicenciaConFlujo } from "../../services/flujoAprobacionService";
+import { flujoAprobacionService } from "../../services/flujoAprobacionService";
+import type { TipoLicenciaConFlujo } from "../../services/flujoAprobacionService";
 
 function StatusBadge({ flujo }: { flujo: TipoLicenciaConFlujo }) {
   if (flujo.flujo_id === null) {
