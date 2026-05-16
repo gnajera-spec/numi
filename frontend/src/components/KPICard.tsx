@@ -10,34 +10,40 @@ interface KPICardProps {
 }
 
 const variantColors: Record<KPIVariant, string> = {
-  neutral: "var(--color-state-neutral)",
+  neutral:   "var(--color-state-neutral)",
   confirmed: "var(--color-state-confirmed)",
-  present: "var(--color-state-present)",
-  absent: "var(--color-state-absent)",
-  pending: "var(--color-state-pending)",
+  present:   "var(--color-state-present)",
+  absent:    "var(--color-state-absent)",
+  pending:   "var(--color-state-pending)",
 };
 
 export function KPICard({ icon: Icon, value, label, variant = "neutral" }: KPICardProps) {
   const color = variantColors[variant];
   return (
     <div
-      className="flex items-center gap-4 p-5 rounded-lg border"
+      className="flex items-center gap-3 p-4 rounded-xl border"
       style={{
         background: "var(--color-surface-card)",
         borderColor: "var(--color-surface-border)",
       }}
     >
       <div
-        className="flex items-center justify-center w-11 h-11 rounded-lg shrink-0"
-        style={{ background: `color-mix(in srgb, ${color} 12%, transparent)` }}
+        className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
+        style={{ background: `color-mix(in srgb, ${color} 10%, transparent)` }}
       >
-        <Icon size={22} style={{ color }} />
+        <Icon size={18} style={{ color }} />
       </div>
-      <div>
-        <p className="text-3xl font-bold leading-none" style={{ color }}>
+      <div className="min-w-0">
+        <p
+          className="text-2xl font-bold leading-none"
+          style={{ color, fontVariantNumeric: "tabular-nums" }}
+        >
           {value}
         </p>
-        <p className="text-xs mt-1" style={{ color: "var(--color-content-secondary)" }}>
+        <p
+          className="text-[11px] mt-1 leading-tight"
+          style={{ color: "var(--color-content-secondary)" }}
+        >
           {label}
         </p>
       </div>

@@ -6,6 +6,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Spinner } from "../../components/Spinner";
 import { adminLicenciasService } from "../../services/adminLicenciasService";
+import { Badge, estadoToVariant } from "../../components/Badge";
 import type { SolicitudLicencia, EstadoSolicitud } from "../../types";
 
 const estadoBadge: Record<EstadoSolicitud, { label: string; color: string; bg: string }> = {
@@ -141,7 +142,7 @@ export function AdminLicenciasPage() {
         estado: filtroEstado || undefined,
         page_size: 50,
       });
-      setSolicitudes(res.data);
+      setSolicitudes(res.data ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar solicitudes");
     } finally {
@@ -209,12 +210,7 @@ export function AdminLicenciasPage() {
                       <span className="font-semibold text-sm" style={{ color: "var(--color-content-primary)" }}>
                         {sol.tipo_licencia_nombre}
                       </span>
-                      <span
-                        className="text-xs font-semibold rounded-full px-2.5 py-0.5"
-                        style={{ background: badge.bg, color: badge.color }}
-                      >
-                        {badge.label}
-                      </span>
+                      <Badge variant={estadoToVariant(sol.estado)} label={badge.label} />
                       <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
                         Nº {sol.numero}
                       </span>

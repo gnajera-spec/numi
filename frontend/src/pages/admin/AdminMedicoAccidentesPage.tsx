@@ -261,8 +261,12 @@ export function AdminMedicoAccidentesPage() {
                           <span className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
                             {formatDateTime(acc.fecha_hora)}
                           </span>
-                          <span className="text-xs font-medium rounded-full px-2 py-0.5"
-                            style={{ background: badge.bg, color: badge.color }}>{badge.label}</span>
+                          <span className="text-xs font-medium rounded-full px-2 py-0.5 border"
+                            style={{
+                              color: badge.bg === "var(--color-surface-empty)" ? "var(--color-content-secondary)" : badge.bg,
+                              borderColor: badge.bg === "var(--color-surface-empty)" ? "var(--color-surface-border)" : badge.bg,
+                              background: "transparent",
+                            }}>{badge.label}</span>
                           {acc.numero_art && (
                             <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
                               ART: {acc.numero_art}

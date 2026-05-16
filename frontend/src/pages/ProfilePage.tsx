@@ -345,7 +345,10 @@ export function ProfilePage() {
           </div>
           <InfoRow label="Nombre" value={user?.full_name} />
           <InfoRow label="Email" value={user?.email} />
-          <InfoRow label="Rol" value={user?.role} />
+          <InfoRow label="Rol" value={
+            ({ colaborador: "Colaborador", rrhh: "RR.HH.", admin_empresa: "Admin empresa",
+              super_admin: "Super admin", servicio_medico: "Servicio médico" } as Record<string,string>)[user?.role ?? ""] ?? user?.role
+          } />
         </div>
 
         {/* Empresa */}

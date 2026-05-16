@@ -15,6 +15,15 @@ export const licenciasService = {
       `/licencias/mis-solicitudes?page=${page}&page_size=${pageSize}`
     ),
 
+  deleteTipo: (id: string) =>
+    apiClient.delete<void>(`/licencias/tipos/${id}`),
+  createTipo: (data: {
+    codigo: string;
+    nombre: string;
+    descripcion?: string;
+    requiere_certificado?: boolean;
+    dias_maximos?: number;
+  }) => apiClient.post<TipoLicencia>("/licencias/tipos", data),
   getSaldo: () => apiClient.get<SaldoLicencia[]>("/licencias/saldo"),
 
   crear: (data: NuevaSolicitud) =>

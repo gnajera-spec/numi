@@ -12,6 +12,7 @@ import type {
   UploadPreviewResponse,
   ReciboDashboardItem,
 } from "../../types";
+import { useAuth } from "../../contexts/AuthContext";
 
 // ── Nuevo Período Modal ────────────────────────────────────────────────────
 
@@ -223,7 +224,7 @@ function UploadModal({ periodo, onClose, onDone }: UploadModalProps) {
         {!preview ? (
           <div className="flex flex-col gap-4">
             <div
-              className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors hover:border-[--color-primary]"
+              className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors hover:border-[var(--color-primary)]"
               style={{ borderColor: "var(--color-surface-border)" }}
               onClick={() => inputRef.current?.click()}
             >
@@ -326,7 +327,7 @@ function PeriodoDetalle({ periodo, onClose }: PeriodoDetalleProps) {
       setLoading(true);
       try {
         const res = await adminRecibosService.getRecibos(periodo.id);
-        setRecibos(res.data);
+        setRecibos(res.data ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error al cargar recibos");
       } finally {
@@ -437,6 +438,8 @@ function PeriodoDetalle({ periodo, onClose }: PeriodoDetalleProps) {
 // ── Página principal ────────────────────────────────────────────────────────
 
 export function AdminRecibosPage() {
+  const { user } = useAuth();
+  const canManage = user?.role === "admin_empresa" || user?.role === "super_admin" || user?.role === "rrhh";
   const [periodos, setPeriodos] = useState<PeriodoLiquidacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -449,7 +452,7 @@ export function AdminRecibosPage() {
     setError(null);
     try {
       const res = await adminRecibosService.listPeriodos({ page_size: 50 });
-      setPeriodos(res.data);
+      setPeriodos(res.data ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar períodos");
     } finally {
@@ -473,10 +476,12 @@ export function AdminRecibosPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setShowNuevoPeriodoModal(true)}>
-          <Plus size={16} />
-          Nuevo período
-        </Button>
+        {canManage && (
+          <Button onClick={() => setShowNuevoPeriodoModal(true)}>
+            <Plus size={16} />
+            Nuevo período
+          </Button>
+        )}
       </div>
 
       {error && <div className="mb-4"><ErrorBanner message={error} onRetry={load} /></div>}
@@ -489,9 +494,11 @@ export function AdminRecibosPage() {
           title="Sin períodos"
           description="Creá el primer período de liquidación."
           action={
-            <Button variant="secondary" onClick={() => setShowNuevoPeriodoModal(true)}>
-              <Plus size={14} /> Nuevo período
-            </Button>
+            canManage ? (
+              <Button variant="secondary" onClick={() => setShowNuevoPeriodoModal(true)}>
+                <Plus size={14} /> Nuevo período
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -519,10 +526,11 @@ export function AdminRecibosPage() {
                         </span>
                       )}
                       <span
-                        className="text-xs font-semibold rounded-full px-2.5 py-0.5"
+                        className="text-xs font-semibold rounded-full px-2.5 py-0.5 border"
                         style={{
-                          background: p.estado === "abierto" ? "#ebf5fb" : "var(--color-surface-empty)",
                           color: p.estado === "abierto" ? "var(--color-primary)" : "var(--color-content-secondary)",
+                          borderColor: p.estado === "abierto" ? "var(--color-primary)" : "var(--color-surface-border)",
+                          background: "transparent",
                         }}
                       >
                         {p.estado === "abierto" ? "Abierto" : "Cerrado"}
@@ -545,14 +553,16 @@ export function AdminRecibosPage() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => setUploadPeriodo(p)}
-                      className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors hover:bg-blue-50"
-                      style={{ color: "var(--color-primary)", borderColor: "var(--color-surface-border)" }}
-                    >
-                      <Upload size={13} />
-                      Subir recibos
-                    </button>
+                    {canManage && (
+                      <button
+                        onClick={() => setUploadPeriodo(p)}
+                        className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors hover:bg-blue-50"
+                        style={{ color: "var(--color-primary)", borderColor: "var(--color-surface-border)" }}
+                      >
+                        <Upload size={13} />
+                        Subir recibos
+                      </button>
+                    )}
                     <button
                       onClick={() => setDetallePeriodo(p)}
                       className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"

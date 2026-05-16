@@ -102,7 +102,7 @@ export function ReceiptsPage() {
     setLoading(true);
     try {
       const res = await recibosService.list();
-      setRecibos(res.data);
+      setRecibos(res.data ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar recibos");
     } finally {
@@ -184,15 +184,19 @@ export function ReceiptsPage() {
                   </p>
                 </div>
                 <span
-                  className="text-xs font-semibold rounded-full px-2.5 py-1 shrink-0"
-                  style={{ background: badge.bg, color: badge.color }}
+                  className="text-xs font-semibold rounded-full px-2.5 py-1 shrink-0 border"
+                  style={{
+                    color: badge.bg === "var(--color-surface-empty)" ? "var(--color-content-secondary)" : badge.bg,
+                    borderColor: badge.bg === "var(--color-surface-empty)" ? "var(--color-surface-border)" : badge.bg,
+                    background: "transparent",
+                  }}
                 >
                   {badge.label}
                 </span>
                 <div className="flex gap-2 shrink-0">
                   <button
                     onClick={() => handleDownload(recibo)}
-                    className="flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors hover:bg-[--color-surface-empty]"
+                    className="flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors hover:bg-[var(--color-surface-empty)]"
                     style={{ borderColor: "var(--color-surface-border)", color: "var(--color-content-secondary)" }}
                     aria-label="Descargar PDF"
                   >

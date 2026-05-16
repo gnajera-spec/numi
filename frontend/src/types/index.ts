@@ -6,6 +6,7 @@ export interface UserMe {
   last_name: string;
   full_name: string;
   role: "colaborador" | "rrhh" | "admin_empresa" | "super_admin" | "servicio_medico";
+  roles?: string[];
   estado: "pendiente" | "activo" | "suspendido" | "baja";
   tenant_id: string;
   tenant_nombre?: string;
@@ -68,11 +69,15 @@ export type EstadoSolicitud = "pendiente" | "aprobada" | "rechazada" | "cancelad
 
 export interface TipoLicencia {
   id: string;
+  tenant_id: string | null;
   codigo: string;
   nombre: string;
+  descripcion?: string | null;
   requiere_certificado: boolean;
+  es_medica?: boolean;
   max_dias_por_anio?: number;
-  es_global: boolean;
+  dias_maximos?: number;
+  is_active?: boolean;
 }
 
 export interface SolicitudLicencia {
@@ -106,27 +111,39 @@ export interface NuevaSolicitud {
   fecha_inicio: string;
   fecha_fin: string;
   comentario?: string;
+  medico_nombre?: string;
+  medico_matricula?: string;
 }
 
 // Comunicaciones
-export type EstadoComunicacion = "borrador" | "enviada" | "programada";
+// Estado values match DB CHECK: borrador | enviando | enviado | programado | cancelado
+export type EstadoComunicacion = "borrador" | "enviando" | "enviado" | "programado" | "cancelado";
 
+// Represents a comunicacion_destinatarios row with nested comunicaciones data
+// The "id" here is the DESTINATARIO record id; communication id is in comunicaciones.id
 export interface ComunicacionColaborador {
-  id: string;
-  titulo: string;
-  cuerpo: string;
-  requiere_confirmacion: boolean;
+  id: string;           // destinatario record id
+  estado: string;
+  enviado_at?: string;
   leido_at?: string;
   confirmado_at?: string;
-  created_at: string;
-  adjuntos: AdjuntoComunicacion[];
+  comunicaciones: {
+    id: string;         // communication id — use this for confirmar()
+    asunto: string;
+    cuerpo: string;
+    requiere_confirmacion: boolean;
+    enviado_at?: string;
+    comunicacion_adjuntos?: AdjuntoComunicacion[];
+  };
 }
 
 export interface AdjuntoComunicacion {
   id: string;
-  nombre_archivo: string;
-  content_type: string;
-  signed_url?: string;
+  filename: string;           // backend: AdjuntoOut.filename
+  mime_type: string;          // backend: AdjuntoOut.mime_type
+  file_url: string;           // backend: AdjuntoOut.file_url (signed URL from Supabase Storage)
+  file_size_bytes?: number;
+  comunicacion_id?: string;
 }
 
 // Admin — Usuarios
@@ -140,6 +157,7 @@ export interface UserSummary {
   last_name: string;
   full_name: string;
   role: RolUsuario;
+  roles: RolUsuario[];
   estado: EstadoUsuario;
   cuil?: string;
   legajo?: string;
@@ -226,11 +244,24 @@ export interface ComunicacionAdmin {
   cuerpo: string;
   tipo_segmento: "todos" | "sede" | "departamento" | "puesto" | "lista_custom";
   requiere_confirmacion: boolean;
-  estado: "borrador" | "enviada" | "programada";
+  estado: EstadoComunicacion;
   programado_at?: string;
   enviado_at?: string;
   total_destinatarios?: number;
+  // Backend returns adjuntos under "comunicacion_adjuntos" (the table join name)
+  comunicacion_adjuntos?: AdjuntoComunicacion[];
+  metricas?: MetricasComunicacion;
   created_at: string;
+}
+
+export interface DestinatarioTracking {
+  id: string;
+  user_id: string;
+  nombre: string;
+  email: string;
+  estado: string;
+  leido_at?: string;
+  confirmado_at?: string;
 }
 
 export interface NuevaComunicacion {
@@ -249,9 +280,68 @@ export interface MetricasComunicacion {
   confirmados: number;
 }
 
+// Super Admin — Tenants
+export type TenantPlan = "starter" | "professional" | "enterprise";
+export type TenantEstado = "activo" | "suspendido" | "baja";
+
+export interface TenantSummary {
+  id: string;
+  nombre: string;
+  nombre_corto: string;
+  subdominio: string;
+  plan: TenantPlan;
+  estado: TenantEstado;
+  logo_url?: string;
+  color_primario?: string;
+}
+
+export interface TenantOut extends TenantSummary {
+  cuit: string;
+  whatsapp_numero?: string;
+  max_colaboradores: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenantCreateResponse extends TenantOut {
+  admin_email: string;
+  initial_password: string;
+}
+
+export interface CreateTenantRequest {
+  nombre: string;
+  nombre_corto: string;
+  cuit: string;
+  subdominio: string;
+  plan: TenantPlan;
+  admin_email: string;
+  admin_first_name: string;
+  admin_last_name: string;
+  logo_url?: string;
+  color_primario?: string;
+}
+
+export interface UpdateTenantRequest {
+  nombre?: string;
+  nombre_corto?: string;
+  plan?: TenantPlan;
+  estado?: TenantEstado;
+  logo_url?: string;
+  color_primario?: string;
+}
+
 // Paginación
 export interface Paginated<T> {
   data: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+// Paginación con campo "items" (usado por comunicaciones, médico, organización)
+export interface PaginatedItems<T> {
+  items: T[];
   total: number;
   page: number;
   page_size: number;

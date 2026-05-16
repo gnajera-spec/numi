@@ -1,37 +1,193 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,300;1,400;1,600;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600&display=swap');
+
+/* ═══════════════════════════════════════════════════════════════════
+   NUMI — Design System
+   Manual de Identidad Primaria v2
+   Principal: #226080  |  Secundario: #e87d50
+   Tipografía: Montserrat
+   ═══════════════════════════════════════════════════════════════════ */
 
 @theme {
-  --color-primary: #4ba3d9;
-  --color-primary-light: #ebf5fb;
-  --color-primary-dark: #2e86c1;
+  /* ── Colores de marca (del manual) ─────────────────────────────── */
+  --color-primary:       #226080;
+  --color-primary-hover: #1a4e64;
+  --color-primary-light: #daeaf3;
+  --color-primary-xlight:#eef6fb;
 
-  --color-state-confirmed: #2e86c1;
-  --color-state-present: #27ae60;
-  --color-state-absent: #e74c3c;
-  --color-state-pending: #f39c12;
-  --color-state-neutral: #7f8c8d;
+  --color-secondary:       #e87d50;
+  --color-secondary-hover: #d4673d;
+  --color-secondary-light: #fde8de;
 
-  --color-surface-app: #f4f6f8;
-  --color-surface-card: #ffffff;
-  --color-surface-empty: #f8f9fa;
-  --color-surface-border: #e8ecf0;
+  --color-highlight-1: #db3f81;
+  --color-highlight-2: #75559b;
+  --color-highlight-3: #c4cd5f;
 
-  --color-content-primary: #1a2332;
-  --color-content-secondary: #6b7a8d;
-  --color-content-disabled: #b0bec5;
+  --color-gray-50: #606060;
+  --color-gray-25: #969696;
 
-  --font-family-sans: "Inter", system-ui, -apple-system, sans-serif;
+  /* ── Superficies ────────────────────────────────────────────────── */
+  --color-bg-app:      #edf4f8;   /* fondo general: azul primario muy suave */
+  --color-bg-card:     #ffffff;   /* cards / sidebar */
+  --color-bg-hover:    #f4f9fc;   /* hover sobre filas */
+  --color-bg-subtle:   #f7fbfd;   /* fondo de inputs */
+
+  /* ── Bordes ─────────────────────────────────────────────────────── */
+  --color-border:        #ccdde8;
+  --color-border-strong: #a8c4d5;
+
+  /* ── Texto ──────────────────────────────────────────────────────── */
+  --color-text-primary:   #1a2c38;
+  --color-text-secondary: #4d6a7a;
+  --color-text-disabled:  #96b2be;
+  --color-text-inverse:   #ffffff;
+
+  /* ── Estados ────────────────────────────────────────────────────── */
+  --color-success:       #1a7a45;
+  --color-success-bg:    #e6f7ee;
+  --color-warning:       #995c00;
+  --color-warning-bg:    #fff3dc;
+  --color-error:         #b91c1c;
+  --color-error-bg:      #fde8e8;
+
+  /* ── Sombras ────────────────────────────────────────────────────── */
+  --shadow-xs:  0 1px 2px rgba(34,96,128,.06);
+  --shadow-sm:  0 1px 4px rgba(34,96,128,.08), 0 0 1px rgba(34,96,128,.04);
+  --shadow-md:  0 4px 16px rgba(34,96,128,.10), 0 0 2px rgba(34,96,128,.05);
+  --shadow-lg:  0 8px 32px rgba(34,96,128,.13), 0 0 3px rgba(34,96,128,.06);
+  --shadow-xl:  0 16px 48px rgba(34,96,128,.16), 0 0 4px rgba(34,96,128,.06);
+
+  /* ── Tipografía ─────────────────────────────────────────────────── */
+  --font-sans: 'Montserrat', system-ui, -apple-system, sans-serif;
+
+  /* ── Bordes redondeados ─────────────────────────────────────────── */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-xl:   24px;
+  --radius-full: 9999px;
+
+  /* ── Legacy ─────────────────────────────────────────────────────── */
+  --color-numi-bg-1:          #0d2233;
+  --color-numi-bg-2:          #163d52;
+  --color-numi-bg-3:          #1c4f68;
+  --color-surface-app:        #edf4f8;
+  --color-surface-card:       #ffffff;
+  --color-surface-empty:      #f4f9fc;
+  --color-surface-border:     #ccdde8;
+  --color-content-primary:    #1a2c38;
+  --color-content-secondary:  #4d6a7a;
+  --color-content-disabled:   #96b2be;
+  --color-state-present:      #1a7a45;
+  --color-state-absent:       #b91c1c;
+  --color-state-pending:      #995c00;
+  --color-state-confirmed:    #226080;
+  --color-state-audit:        #75559b;
+  --color-state-neutral:      #4d6a7a;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   Base
+   ═══════════════════════════════════════════════════════════════════ */
 @layer base {
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
   html {
-    font-family: var(--font-family-sans);
+    font-family: var(--font-sans);
     font-size: 16px;
-    color: var(--color-content-primary);
+    color: var(--color-text-primary);
+    background: var(--color-bg-app);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   *:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
+    border-radius: 4px;
   }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-strong);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Animaciones
+   ═══════════════════════════════════════════════════════════════════ */
+@keyframes fadeIn  { from { opacity:0 }                          to { opacity:1 } }
+@keyframes slideUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
+@keyframes slideInLeft { from { transform:translateX(-100%) } to { transform:translateX(0) } }
+@keyframes spin    { to { transform:rotate(360deg) } }
+@keyframes skeletonShimmer {
+  0%   { background-position: -200% 0 }
+  100% { background-position:  200% 0 }
+}
+
+.animate-spin { animation: spin 1s linear infinite; }
+.animate-fade { animation: fadeIn 200ms ease; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Skeleton loader
+   ═══════════════════════════════════════════════════════════════════ */
+.skeleton {
+  background: linear-gradient(90deg,
+    #ddeaf2 25%, #eaf4fa 50%, #ddeaf2 75%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Badges de estado (outlined, NUMI style)
+   ═══════════════════════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  border: 1.5px solid;
+}
+.badge-aprobada, .badge-aprobado, .badge-activo {
+  color: var(--color-success); border-color: var(--color-success);
+  background: var(--color-success-bg);
+}
+.badge-pendiente {
+  color: var(--color-warning); border-color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+.badge-rechazada, .badge-no-aprobada, .badge-deshabilitado,
+.badge-baja, .badge-suspendido {
+  color: var(--color-error); border-color: var(--color-error);
+  background: var(--color-error-bg);
+}
+.badge-auditoria {
+  color: var(--color-highlight-2); border-color: var(--color-highlight-2);
+  background: #f2edfa;
+}
+.badge-cancelada, .badge-neutral {
+  color: var(--color-text-secondary); border-color: var(--color-border-strong);
+  background: transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Legacy: numi-bg (para posibles usos futuros)
+   ═══════════════════════════════════════════════════════════════════ */
+.numi-bg {
+  background: var(--color-bg-app);
 }

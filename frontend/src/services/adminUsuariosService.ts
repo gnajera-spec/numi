@@ -36,3 +36,64 @@ export const adminUsuariosService = {
   baja: (id: string, motivo?: string) =>
     apiClient.post<void>(`/users/${id}/baja`, { motivo: motivo ?? "" }),
 };
+
+// ── Invitaciones ──────────────────────────────────────────────────────────────
+
+export interface InvitacionCreada {
+  token: string;
+  email: string;
+  cuil: string;
+  link: string;
+  expires_at: string;
+}
+
+export interface LoteResultado {
+  exitosos: InvitacionCreada[];
+  errores: { cuil: string; email: string; error: string }[];
+}
+
+export const invitacionesService = {
+  invitarIndividual: (cuil: string, email: string) =>
+    apiClient.post<InvitacionCreada>("/admin/invitaciones/individual", { cuil, email }),
+
+  invitarLote: (colaboradores: { cuil: string; email: string }[]) =>
+    apiClient.post<LoteResultado>("/admin/invitaciones/lote", { colaboradores }),
+
+  invitarLoteCSV: async (file: File): Promise<LoteResultado> => {
+    const token = localStorage.getItem("access_token");
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/admin/invitaciones/lote/csv", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail ?? "Error al procesar CSV");
+    }
+    return res.json();
+  },
+};
+
+// ── Onboarding público ────────────────────────────────────────────────────────
+
+export interface OnboardingTokenInfo {
+  cuil: string;
+  email: string;
+  tenant_nombre: string;
+  expires_at: string;
+}
+
+export const onboardingService = {
+  getInfo: (token: string) =>
+    apiClient.get<OnboardingTokenInfo>(`/onboarding/${token}`),
+
+  completar: (token: string, data: {
+    nombre: string;
+    apellido: string;
+    email: string;
+    nro_documento: string;
+    password: string;
+  }) => apiClient.post<{ message: string; user_id: string }>(`/onboarding/${token}/completar`, data),
+};

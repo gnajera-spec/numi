@@ -28,4 +28,9 @@ export const authService = {
     apiClient.post<void>("/auth/logout", { refresh_token }),
 
   me: () => apiClient.get<UserMe>("/auth/me"),
+
+  switchRole: (role: string) =>
+    apiClient.post<{ access_token: string; refresh_token: string; token_type: string }>(
+      "/auth/switch-role", { role }
+    ),
 };
