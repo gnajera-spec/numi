@@ -30,7 +30,9 @@ def _make_com_summary() -> dict:
     return {
         "id": COM_ID,
         "asunto": "Aviso importante",
+        "cuerpo": "Este es el cuerpo del aviso.",
         "tipo_segmento": "todos",
+        "requiere_confirmacion": False,
         "estado": "borrador",
         "total_destinatarios": 0,
         "enviado_at": None,

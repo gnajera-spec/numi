@@ -121,14 +121,16 @@ def test_create_tenant_ok(client):
         "subdominio": "acme", "plan": "starter",
         "admin_email": "admin@acme.com", "admin_first_name": "Juan", "admin_last_name": "Pérez",
     }
+    create_response = {**_TENANT_OUT, "admin_email": "admin@acme.com", "initial_password": "TmpPass123!"}
     with (
         patch("app.routers.tenants.TenantService.create_tenant",
-              new=AsyncMock(return_value=_TENANT_OUT)),
+              new=AsyncMock(return_value=create_response)),
         patch("app.dependencies.auth.UserRepository") as mock_repo,
     ):
         mock_repo.return_value.get_by_id = AsyncMock(return_value=user)
         resp = client.post("/tenants", json=body, headers=_auth(user))
     assert resp.status_code == 201
+    assert resp.json()["admin_email"] == "admin@acme.com"
 
 
 # ── GET /tenants/me ───────────────────────────────────────────────────────────
