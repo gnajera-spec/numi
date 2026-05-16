@@ -1,57 +1,57 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileText, Plus, X, Pencil } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
-
-interface TipoLicencia {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  dias_maximos: number | null;
-  requiere_certificado: boolean;
-  activo: boolean;
-}
-
-const MOCK_TIPOS: TipoLicencia[] = [
-  { id: "1", nombre: "Vacaciones", descripcion: "Días de descanso anuales remunerados", dias_maximos: 14, requiere_certificado: false, activo: true },
-  { id: "2", nombre: "Enfermedad", descripcion: "Licencia por enfermedad con certificado médico", dias_maximos: 30, requiere_certificado: true, activo: true },
-  { id: "3", nombre: "Maternidad", descripcion: "Licencia por maternidad según convenio", dias_maximos: 90, requiere_certificado: true, activo: true },
-  { id: "4", nombre: "Paternidad", descripcion: "Licencia por paternidad", dias_maximos: 5, requiere_certificado: false, activo: true },
-  { id: "5", nombre: "Estudio", descripcion: "Días para rendir exámenes", dias_maximos: 10, requiere_certificado: true, activo: false },
-];
+import { ErrorBanner } from "../../components/ErrorBanner";
+import { licenciasService } from "../../services/licenciasService";
+import type { TipoLicencia } from "../../types";
 
 interface FormState {
+  codigo: string;
   nombre: string;
   descripcion: string;
   dias_maximos: string;
   requiere_certificado: boolean;
-  activo: boolean;
+  is_active: boolean;
 }
 
 const emptyForm: FormState = {
+  codigo: "",
   nombre: "",
   descripcion: "",
   dias_maximos: "",
   requiere_certificado: false,
-  activo: true,
+  is_active: true,
+};
+
+const inputClass =
+  "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 transition";
+
+const inputStyle = {
+  borderColor: "var(--color-surface-border)",
+  color: "var(--color-content-primary)",
+  background: "var(--color-surface-app)",
 };
 
 interface ModalProps {
   editing: TipoLicencia | null;
+  saving: boolean;
   onClose: () => void;
   onSave: (data: FormState) => void;
 }
 
-function TipoLicenciaModal({ editing, onClose, onSave }: ModalProps) {
+function TipoLicenciaModal({ editing, saving, onClose, onSave }: ModalProps) {
+  const isGlobal = editing && !editing.tenant_id;
   const [form, setForm] = useState<FormState>(
     editing
       ? {
+          codigo: editing.codigo,
           nombre: editing.nombre,
-          descripcion: editing.descripcion,
+          descripcion: editing.descripcion ?? "",
           dias_maximos: editing.dias_maximos != null ? String(editing.dias_maximos) : "",
           requiere_certificado: editing.requiere_certificado,
-          activo: editing.activo,
+          is_active: editing.is_active ?? true,
         }
       : emptyForm
   );
@@ -60,9 +60,6 @@ function TipoLicenciaModal({ editing, onClose, onSave }: ModalProps) {
     e.preventDefault();
     onSave(form);
   };
-
-  const inputClass =
-    "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 transition";
 
   return (
     <div
@@ -83,22 +80,45 @@ function TipoLicenciaModal({ editing, onClose, onSave }: ModalProps) {
           </button>
         </div>
 
+        {isGlobal && (
+          <p style={{
+            fontSize: 12, padding: "8px 12px", borderRadius: 8,
+            background: "#fefce8", color: "#92400e",
+            border: "1px solid #fde68a",
+          }}>
+            Este es un tipo de licencia global del sistema. Solo podés ver sus datos, no modificarlos.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+              Código <span className="text-red-500">*</span>
+            </label>
+            <input
+              required
+              disabled={!!editing}
+              value={form.codigo}
+              onChange={(e) => setForm((f) => ({ ...f, codigo: e.target.value.toUpperCase() }))}
+              placeholder="Ej: VAC"
+              maxLength={10}
+              className={inputClass}
+              style={{ ...inputStyle, opacity: editing ? 0.6 : 1 }}
+            />
+          </div>
+
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
               Nombre <span className="text-red-500">*</span>
             </label>
             <input
               required
+              disabled={isGlobal}
               value={form.nombre}
               onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
               placeholder="Ej: Vacaciones"
               className={inputClass}
-              style={{
-                borderColor: "var(--color-surface-border)",
-                color: "var(--color-content-primary)",
-                background: "var(--color-surface-app)",
-              }}
+              style={{ ...inputStyle, opacity: isGlobal ? 0.6 : 1 }}
             />
           </div>
 
@@ -108,35 +128,32 @@ function TipoLicenciaModal({ editing, onClose, onSave }: ModalProps) {
             </label>
             <textarea
               rows={2}
+              disabled={isGlobal}
               value={form.descripcion}
               onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
               placeholder="Descripción breve"
               className={inputClass}
-              style={{
-                borderColor: "var(--color-surface-border)",
-                color: "var(--color-content-primary)",
-                background: "var(--color-surface-app)",
-                resize: "none",
-              }}
+              style={{ ...inputStyle, resize: "none", opacity: isGlobal ? 0.6 : 1 }}
             />
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
-              Días máximos <span className="text-xs font-normal" style={{ color: "var(--color-content-secondary)" }}>(dejar vacío = ilimitado)</span>
+              Días máximos{" "}
+              <span className="text-xs font-normal" style={{ color: "var(--color-content-secondary)" }}>
+                (dejar vacío = ilimitado)
+              </span>
             </label>
             <input
               type="number"
               min={1}
+              max={365}
+              disabled={isGlobal}
               value={form.dias_maximos}
               onChange={(e) => setForm((f) => ({ ...f, dias_maximos: e.target.value }))}
               placeholder="30"
               className={inputClass}
-              style={{
-                borderColor: "var(--color-surface-border)",
-                color: "var(--color-content-primary)",
-                background: "var(--color-surface-app)",
-              }}
+              style={{ ...inputStyle, opacity: isGlobal ? 0.6 : 1 }}
             />
           </div>
 
@@ -144,6 +161,7 @@ function TipoLicenciaModal({ editing, onClose, onSave }: ModalProps) {
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
+                disabled={isGlobal}
                 checked={form.requiere_certificado}
                 onChange={(e) => setForm((f) => ({ ...f, requiere_certificado: e.target.checked }))}
                 className="w-4 h-4 rounded"
@@ -153,29 +171,29 @@ function TipoLicenciaModal({ editing, onClose, onSave }: ModalProps) {
                 Requiere certificado médico
               </span>
             </label>
-            {editing && (
+            {editing && !isGlobal && (
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={form.activo}
-                  onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))}
+                  checked={form.is_active}
+                  onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
                   className="w-4 h-4 rounded"
                   style={{ accentColor: "var(--color-primary)" }}
                 />
-                <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>
-                  Activo
-                </span>
+                <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>Activo</span>
               </label>
             )}
           </div>
 
           <div className="flex gap-3 pt-1">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
-              Cancelar
+              {isGlobal ? "Cerrar" : "Cancelar"}
             </Button>
-            <Button type="submit" className="flex-1">
-              {editing ? "Guardar cambios" : "Crear tipo"}
-            </Button>
+            {!isGlobal && (
+              <Button type="submit" className="flex-1" disabled={saving}>
+                {saving ? "Guardando…" : editing ? "Guardar cambios" : "Crear tipo"}
+              </Button>
+            )}
           </div>
         </form>
       </div>
@@ -184,51 +202,66 @@ function TipoLicenciaModal({ editing, onClose, onSave }: ModalProps) {
 }
 
 export function AdminTiposLicenciasPage() {
-  const [tipos, setTipos] = useState<TipoLicencia[]>(MOCK_TIPOS);
+  const [tipos, setTipos] = useState<TipoLicencia[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<TipoLicencia | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = (data: FormState) => {
-    if (editing) {
-      setTipos((prev) =>
-        prev.map((t) =>
-          t.id === editing.id
-            ? {
-                ...t,
-                ...data,
-                dias_maximos: data.dias_maximos ? Number(data.dias_maximos) : null,
-              }
-            : t
-        )
-      );
-    } else {
-      setTipos((prev) => [
-        ...prev,
-        {
-          id: String(Date.now()),
-          ...data,
-          dias_maximos: data.dias_maximos ? Number(data.dias_maximos) : null,
-        },
-      ]);
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await licenciasService.listTipos();
+      setTipos(res.data ?? res as unknown as TipoLicencia[]);
+    } catch {
+      setError("No se pudieron cargar los tipos de licencia.");
+    } finally {
+      setLoading(false);
     }
-    setShowModal(false);
-    setEditing(null);
+  }
+
+  const handleSave = async (data: FormState) => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (editing) {
+        await licenciasService.updateTipo(editing.id, {
+          nombre: data.nombre,
+          descripcion: data.descripcion || null,
+          requiere_certificado: data.requiere_certificado,
+          dias_maximos: data.dias_maximos ? Number(data.dias_maximos) : null,
+          is_active: data.is_active,
+        });
+      } else {
+        await licenciasService.createTipo({
+          codigo: data.codigo,
+          nombre: data.nombre,
+          descripcion: data.descripcion || undefined,
+          requiere_certificado: data.requiere_certificado,
+          dias_maximos: data.dias_maximos ? Number(data.dias_maximos) : undefined,
+        });
+      }
+      await load();
+      setShowModal(false);
+      setEditing(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "No se pudo guardar.";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const openEdit = (tipo: TipoLicencia) => {
-    setEditing(tipo);
-    setShowModal(true);
-  };
-
-  const openNew = () => {
-    setEditing(null);
-    setShowModal(true);
-  };
+  const openEdit = (tipo: TipoLicencia) => { setEditing(tipo); setShowModal(true); };
+  const openNew = () => { setEditing(null); setShowModal(true); };
 
   return (
     <AdminLayout>
       <div className="flex flex-col gap-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: "var(--color-content-primary)" }}>
@@ -244,8 +277,13 @@ export function AdminTiposLicenciasPage() {
           </Button>
         </div>
 
-        {/* Lista */}
-        {tipos.length === 0 ? (
+        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "var(--color-content-secondary)", fontSize: 13 }}>
+            Cargando…
+          </div>
+        ) : tipos.length === 0 ? (
           <EmptyState
             icon={<FileText size={40} />}
             title="Sin tipos de licencia"
@@ -266,6 +304,7 @@ export function AdminTiposLicenciasPage() {
                     background: "var(--color-surface-app)",
                   }}
                 >
+                  <th className="px-4 py-3">Código</th>
                   <th className="px-4 py-3">Nombre</th>
                   <th className="px-4 py-3 hidden md:table-cell">Descripción</th>
                   <th className="px-4 py-3 text-center">Días máx.</th>
@@ -276,12 +315,19 @@ export function AdminTiposLicenciasPage() {
               </thead>
               <tbody className="divide-y" style={{ borderColor: "var(--color-surface-border)" }}>
                 {tipos.map((tipo) => (
-                  <tr
-                    key={tipo.id}
-                    className="hover:bg-[--color-surface-app] transition-colors"
-                  >
+                  <tr key={tipo.id} className="hover:bg-[--color-surface-app] transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs" style={{ color: "var(--color-content-secondary)" }}>
+                      {tipo.codigo}
+                    </td>
                     <td className="px-4 py-3 font-medium" style={{ color: "var(--color-content-primary)" }}>
                       {tipo.nombre}
+                      {!tipo.tenant_id && (
+                        <span style={{
+                          marginLeft: 6, fontSize: 10, fontWeight: 600, padding: "1px 6px",
+                          borderRadius: 10, background: "var(--color-primary-light)",
+                          color: "var(--color-primary)",
+                        }}>Global</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell" style={{ color: "var(--color-content-secondary)" }}>
                       {tipo.descripcion || "—"}
@@ -293,12 +339,8 @@ export function AdminTiposLicenciasPage() {
                       <span
                         className="text-xs rounded-full px-2 py-0.5 font-medium"
                         style={{
-                          background: tipo.requiere_certificado
-                            ? "var(--color-primary-light)"
-                            : "var(--color-surface-empty)",
-                          color: tipo.requiere_certificado
-                            ? "var(--color-primary)"
-                            : "var(--color-content-disabled)",
+                          background: tipo.requiere_certificado ? "var(--color-primary-light)" : "var(--color-surface-empty)",
+                          color: tipo.requiere_certificado ? "var(--color-primary)" : "var(--color-content-disabled)",
                         }}
                       >
                         {tipo.requiere_certificado ? "Sí" : "No"}
@@ -308,15 +350,11 @@ export function AdminTiposLicenciasPage() {
                       <span
                         className="text-xs rounded-full px-2 py-0.5 font-medium"
                         style={{
-                          background: tipo.activo
-                            ? "var(--color-state-present-bg, #f0fdf4)"
-                            : "var(--color-surface-empty)",
-                          color: tipo.activo
-                            ? "var(--color-state-present)"
-                            : "var(--color-content-disabled)",
+                          background: tipo.is_active ? "var(--color-state-present-bg, #f0fdf4)" : "var(--color-surface-empty)",
+                          color: tipo.is_active ? "var(--color-state-present)" : "var(--color-content-disabled)",
                         }}
                       >
-                        {tipo.activo ? "Activo" : "Inactivo"}
+                        {tipo.is_active ? "Activo" : "Inactivo"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -339,6 +377,7 @@ export function AdminTiposLicenciasPage() {
       {showModal && (
         <TipoLicenciaModal
           editing={editing}
+          saving={saving}
           onClose={() => { setShowModal(false); setEditing(null); }}
           onSave={handleSave}
         />

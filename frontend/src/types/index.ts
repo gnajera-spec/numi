@@ -65,7 +65,7 @@ export interface FirmaResponse {
 }
 
 // Licencias
-export type EstadoSolicitud = "pendiente" | "aprobada" | "rechazada" | "cancelada";
+export type EstadoSolicitud = "pendiente" | "en_revision" | "aprobada" | "rechazada" | "cancelada";
 
 export interface TipoLicencia {
   id: string;
@@ -92,6 +92,8 @@ export interface SolicitudLicencia {
   comentario_rrhh?: string;
   revisado_por?: { id: string; first_name: string; last_name: string } | null;
   revisado_at?: string | null;
+  flujo_id?: string | null;
+  paso_actual?: number | null;
   created_at: string;
   // Medical fields
   medico_nombre?: string;

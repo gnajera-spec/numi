@@ -25,4 +25,35 @@ export const adminLicenciasService = {
     apiClient.post<SolicitudLicencia>(`/licencias/solicitudes/${id}/rechazar`, {
       comentario,
     }),
+
+  aprobarPaso: (id: string, comentario?: string) =>
+    apiClient.post<SolicitudLicencia>(`/licencias/solicitudes/${id}/aprobar-paso`, {
+      comentario: comentario ?? null,
+    }),
+
+  rechazarPaso: (id: string, comentario: string) =>
+    apiClient.post<SolicitudLicencia>(`/licencias/solicitudes/${id}/rechazar-paso`, {
+      comentario,
+    }),
+
+  getHistorial: (id: string) =>
+    apiClient.get<AprobacionPaso[]>(`/licencias/solicitudes/${id}/historial-aprobacion`),
 };
+
+export interface AprobacionPaso {
+  id: string;
+  solicitud_id: string;
+  orden: number;
+  nombre_paso: string;
+  tipo_aprobador: "rol" | "departamento";
+  rol_aprobador: string | null;
+  departamento_id: string | null;
+  departamento_nombre: string | null;
+  estado: "pendiente" | "aprobado" | "rechazado" | "omitido";
+  aprobado_por: string | null;
+  aprobado_por_nombre: string | null;
+  comentario: string | null;
+  notificado_at: string | null;
+  fecha_decision: string | null;
+  created_at: string;
+}

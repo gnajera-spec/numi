@@ -15,15 +15,6 @@ export const licenciasService = {
       `/licencias/mis-solicitudes?page=${page}&page_size=${pageSize}`
     ),
 
-  deleteTipo: (id: string) =>
-    apiClient.delete<void>(`/licencias/tipos/${id}`),
-  createTipo: (data: {
-    codigo: string;
-    nombre: string;
-    descripcion?: string;
-    requiere_certificado?: boolean;
-    dias_maximos?: number;
-  }) => apiClient.post<TipoLicencia>("/licencias/tipos", data),
   getSaldo: () => apiClient.get<SaldoLicencia[]>("/licencias/saldo"),
 
   crear: (data: NuevaSolicitud) =>
@@ -31,6 +22,11 @@ export const licenciasService = {
 
   cancelar: (id: string) =>
     apiClient.post<SolicitudLicencia>(`/licencias/solicitudes/${id}/cancelar`, {}),
+
+  pendientesAprobacion: (page = 1, pageSize = 50) =>
+    apiClient.get<Paginated<SolicitudLicencia>>(
+      `/licencias/pendientes-mi-aprobacion?page=${page}&page_size=${pageSize}`
+    ),
 
   subirDocumento: async (solicitudId: string, file: File) => {
     const formData = new FormData();

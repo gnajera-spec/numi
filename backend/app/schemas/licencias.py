@@ -31,6 +31,14 @@ class CreateTipoLicenciaRequest(BaseModel):
     dias_maximos: int | None = Field(default=None, ge=1, le=365)
 
 
+class UpdateTipoLicenciaRequest(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1)
+    descripcion: str | None = None
+    requiere_certificado: bool | None = None
+    dias_maximos: int | None = Field(default=None, ge=1, le=365)
+    is_active: bool | None = None
+
+
 # ── Políticas ─────────────────────────────────────────────────────────────────
 
 class PoliticaLicenciaOut(BaseModel):

@@ -32,6 +32,7 @@ from app.schemas.licencias import (
     SaldoLicenciaOut,
     SolicitudLicenciaOut,
     TipoLicenciaOut,
+    UpdateTipoLicenciaRequest,
 )
 from app.schemas.users import Pagination
 from app.utils.encryption import decrypt
@@ -96,6 +97,21 @@ class LicenciaService:
             "dias_maximos": data.dias_maximos,
         }
         row = await self._tipos.create(tenant_id, payload)
+        return TipoLicenciaOut.model_validate(row)
+
+    async def update_tipo(self, tipo_id: str, tenant_id: str, data: UpdateTipoLicenciaRequest) -> TipoLicenciaOut:
+        tipo = await self._tipos.get(tipo_id, tenant_id)
+        if not tipo:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
+        if tipo.get("tenant_id") is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No se pueden modificar los tipos de licencia globales")
+
+        payload = {k: v for k, v in data.model_dump().items() if v is not None}
+        if not payload:
+            return TipoLicenciaOut.model_validate(tipo)
+        row = await self._tipos.update(tipo_id, tenant_id, payload)
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
         return TipoLicenciaOut.model_validate(row)
 
     # ── Políticas ─────────────────────────────────────────────────────────────

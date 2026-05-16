@@ -8,6 +8,7 @@ import { ActivatePage } from "./pages/ActivatePage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ReceiptsPage } from "./pages/ReceiptsPage";
 import { LeavesPage } from "./pages/LeavesPage";
+import { MisPendientesPage } from "./pages/MisPendientesPage";
 import { CommunicationsPage } from "./pages/CommunicationsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { AdminLoginPage } from "./pages/admin/AdminLoginPage";
@@ -53,6 +54,7 @@ function EmployeeApp() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="receipts" element={<ReceiptsPage />} />
           <Route path="leaves" element={<LeavesPage />} />
+          <Route path="pendientes" element={<MisPendientesPage />} />
           <Route path="communications" element={<CommunicationsPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />

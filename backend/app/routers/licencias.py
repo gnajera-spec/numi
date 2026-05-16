@@ -30,6 +30,7 @@ from app.schemas.licencias import (
     SaldoLicenciaOut,
     SolicitudLicenciaOut,
     TipoLicenciaOut,
+    UpdateTipoLicenciaRequest,
 )
 from app.services.licencia_service import LicenciaService
 
@@ -68,6 +69,16 @@ async def create_tipo(
     svc: LicenciaService = Depends(_get_service),
 ):
     return await svc.create_tipo(str(current_user["tenant_id"]), body)
+
+
+@router.patch("/tipos/{tipo_id}", response_model=TipoLicenciaOut)
+async def update_tipo(
+    tipo_id: UUID,
+    body: UpdateTipoLicenciaRequest,
+    current_user: dict = Depends(require_role("admin_empresa")),
+    svc: LicenciaService = Depends(_get_service),
+):
+    return await svc.update_tipo(str(tipo_id), str(current_user["tenant_id"]), body)
 
 
 # ── Políticas ─────────────────────────────────────────────────────────────────

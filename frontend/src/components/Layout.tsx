@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   FileText, Calendar, Bell, User, LogOut, Home, Menu, X,
-  ChevronUp, Check, Briefcase, UserCircle2, Building2, Stethoscope,
+  ChevronUp, Check, Briefcase, UserCircle2, Building2, Stethoscope, CheckSquare,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/employee/dashboard',      label: 'Inicio',      icon: Home },
   { to: '/employee/receipts',       label: 'Recibos',     icon: FileText },
   { to: '/employee/leaves',         label: 'Licencias',   icon: Calendar },
+  { to: '/employee/pendientes',     label: 'Pendientes',  icon: CheckSquare },
   { to: '/employee/communications', label: 'Comunicados', icon: Bell },
   { to: '/employee/profile',        label: 'Mi perfil',   icon: User },
 ];
