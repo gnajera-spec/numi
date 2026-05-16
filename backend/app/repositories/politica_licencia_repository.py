@@ -56,5 +56,5 @@ class PoliticaLicenciaRepository:
             "dias_aviso_previo": data.get("dias_aviso_previo", 0),
             "aprobador_rol": data.get("aprobador_rol", "rrhh"),
         }
-        res = await self._db.table("politicas_licencia").insert(payload).select("*").single().execute()
-        return res.data
+        res = await self._db.table("politicas_licencia").insert(payload).select("*").execute()
+        return res.data[0]

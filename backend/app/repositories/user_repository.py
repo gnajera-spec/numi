@@ -11,8 +11,8 @@ class UserRepository:
     # ── Lookups ──────────────────────────────────────────────────
 
     async def get_by_email(self, email: str) -> dict | None:
-        res = await self._db.table("users").select("*").eq("email", email).single().execute()
-        return res.data
+        res = await self._db.table("users").select("*").eq("email", email).execute()
+        return res.data[0] if res.data else None
 
     async def get_by_id(self, user_id: str | UUID) -> dict | None:
         res = (
@@ -120,8 +120,24 @@ class UserRepository:
         if created_by:
             payload["created_by"] = str(created_by)
 
-        res = await self._db.table("users").insert(payload).select("*").single().execute()
-        return res.data
+        res = await self._db.table("users").insert(payload).select("*").execute()
+        return res.data[0]
+
+    async def create_with_password(self, data: dict) -> dict:
+        """Crea usuario con password_hash ya hasheado — uso exclusivo de super_admin al provisionar tenants."""
+        payload = {
+            "tenant_id": data["tenant_id"],
+            "email": data["email"],
+            "first_name": data["first_name"],
+            "last_name": data["last_name"],
+            "role": data["role"],
+            "estado": data.get("estado", "activo"),
+            "password_hash": data["password_hash"],
+        }
+        if data.get("cuil"):
+            payload["cuil"] = data["cuil"]
+        res = await self._db.table("users").insert(payload).select("*").execute()
+        return res.data[0]
 
     # ── Update ───────────────────────────────────────────────────
 
@@ -144,6 +160,43 @@ class UserRepository:
         )
         return res.data
 
+
+    async def set_role(self, user_id: str | UUID, role: str, tenant_id: str) -> dict | None:
+        """Actualiza el rol de un usuario (verificando que pertenezca al tenant)."""
+        res = await (
+            self._db.table("users")
+            .update({"role": role, "roles": [role]})
+            .eq("id", str(user_id))
+            .eq("tenant_id", tenant_id)
+            .select("*")
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    async def set_roles(self, user_id: str | UUID, roles: list[str], tenant_id: str) -> dict | None:
+        """Asigna múltiples roles. El rol primario se deriva por prioridad."""
+        _priority = ["super_admin", "admin_empresa", "rrhh", "servicio_medico", "colaborador"]
+        primary = next((r for r in _priority if r in roles), roles[0] if roles else "colaborador")
+        res = await (
+            self._db.table("users")
+            .update({"role": primary, "roles": roles})
+            .eq("id", str(user_id))
+            .eq("tenant_id", tenant_id)
+            .select("*")
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    async def list_users_by_tenant(self, tenant_id: str) -> list[dict]:
+        """Devuelve todos los usuarios de un tenant — uso exclusivo super_admin."""
+        res = await (
+            self._db.table("users")
+            .select("*")
+            .eq("tenant_id", tenant_id)
+            .order("last_name")
+            .execute()
+        )
+        return res.data or []
     async def update_last_login(self, user_id: str | UUID) -> None:
         await self._db.table("users").update(
             {"last_login_at": datetime.now(timezone.utc).isoformat()}

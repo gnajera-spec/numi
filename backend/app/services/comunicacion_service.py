@@ -99,6 +99,27 @@ class ComunicacionService:
         out.metricas = MetricasOut(**metricas_raw)
         return out
 
+    # ── RRHH: seguimiento — lista destinatarios ──────────────────────────────
+
+    async def list_destinatarios(self, tenant_id: str, comunicacion_id: str) -> list[dict]:
+        com = await self._comunicaciones.get(comunicacion_id, tenant_id)
+        if not com:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Comunicación no encontrada")
+        rows = await self._destinatarios.list_by_comunicacion(comunicacion_id)
+        result = []
+        for r in rows:
+            u = r.get("users") or {}
+            result.append({
+                "id": r["id"],
+                "user_id": r["user_id"],
+                "nombre": f"{u.get('first_name', '')} {u.get('last_name', '')}".strip(),
+                "email": u.get("email", ""),
+                "estado": r["estado"],
+                "leido_at": r.get("leido_at"),
+                "confirmado_at": r.get("confirmado_at"),
+            })
+        return result
+
     # ── RRHH: adjuntar archivo ────────────────────────────────────────────────
 
     async def add_adjunto(
@@ -195,6 +216,20 @@ class ComunicacionService:
         return PaginatedComunicacionesColaborador(
             total=total, page=page, page_size=page_size, pages=pages, items=items
         )
+
+    # ── Colaborador: marcar como leído ───────────────────────────────────────
+
+    async def marcar_leido(self, comunicacion_id: str, user_id: str) -> str:
+        """Mark a communication as read (idempotent — only sets leido_at if not already set)."""
+        dest = await self._destinatarios.get_for_user(comunicacion_id, user_id)
+        if not dest:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Comunicación no encontrada")
+        # Already read — return existing timestamp (idempotent)
+        if dest.get("leido_at"):
+            return dest["leido_at"]
+        await self._destinatarios.mark_leido(comunicacion_id, user_id)
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).isoformat()
 
     # ── Colaborador: confirmar lectura ────────────────────────────────────────
 

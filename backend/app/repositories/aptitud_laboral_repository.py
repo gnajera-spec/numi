@@ -10,10 +10,9 @@ class AptitudLaboralRepository:
             self._db.table("aptitudes_laborales")
             .insert(data)
             .select("*")
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0]
 
     async def list_by_user(self, user_id: str, tenant_id: str) -> list[dict]:
         res = await (

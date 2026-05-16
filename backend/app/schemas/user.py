@@ -10,6 +10,7 @@ class UserSummary(BaseModel):
     first_name: str
     last_name: str
     role: str
+    roles: list[str] = []
     estado: str
     avatar_url: str | None = None
 

@@ -11,8 +11,10 @@ from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.schemas.comunicaciones import (
     AdjuntoOut,
     ConfirmarResponse,
+    LeerResponse,
     ComunicacionCreate,
     ComunicacionOut,
+    DestinatarioOut,
     EnviarResponse,
     PaginatedComunicaciones,
     PaginatedComunicacionesColaborador,
@@ -89,6 +91,17 @@ async def get_comunicacion(
     return await svc.get(str(current_user["tenant_id"]), id)
 
 
+# ── RRHH: destinatarios (seguimiento) ────────────────────────────────────────
+
+@router.get("/{id}/destinatarios", response_model=list[DestinatarioOut])
+async def list_destinatarios(
+    id: str,
+    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    svc: ComunicacionService = Depends(_get_service),
+):
+    return await svc.list_destinatarios(str(current_user["tenant_id"]), id)
+
+
 # ── RRHH: adjuntar archivo ────────────────────────────────────────────────────
 
 @router.post("/{id}/adjuntos", response_model=AdjuntoOut, status_code=status.HTTP_201_CREATED)
@@ -123,7 +136,19 @@ async def reenviar_comunicacion(
     return await svc.reenviar(str(current_user["tenant_id"]), id)
 
 
-# ── Colaborador: confirmar lectura ────────────────────────────────────────────
+# ── Colaborador: marcar como leído ───────────────────────────────────────────
+
+@router.post("/{id}/leer", response_model=LeerResponse)
+async def leer_comunicacion(
+    id: str,
+    current_user: dict = Depends(get_current_user),
+    svc: ComunicacionService = Depends(_get_service),
+):
+    leido_at = await svc.marcar_leido(id, str(current_user["id"]))
+    return LeerResponse(leido_at=leido_at)
+
+
+# ── Colaborador: confirmar lectura ────────────────────────────────────────────────
 
 @router.post("/{id}/confirmar", response_model=ConfirmarResponse)
 async def confirmar_comunicacion(

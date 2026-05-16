@@ -57,7 +57,6 @@ class SaldoLicenciaRepository:
                 "dias_disponibles": dias_disponibles,
             })
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
         return res.data

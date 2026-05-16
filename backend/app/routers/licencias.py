@@ -59,6 +59,15 @@ async def create_tipo(
     return await svc.create_tipo(str(current_user["tenant_id"]), body)
 
 
+@router.delete("/tipos/{tipo_id}", status_code=204)
+async def delete_tipo(
+    tipo_id: UUID,
+    current_user: dict = Depends(require_role("admin_empresa", "super_admin", "rrhh")),
+    svc: LicenciaService = Depends(_get_service),
+):
+    await svc.delete_tipo(str(tipo_id), str(current_user["tenant_id"]))
+
+
 # ── Políticas ─────────────────────────────────────────────────────────────────
 
 @router.get("/politicas", response_model=list[PoliticaLicenciaOut])

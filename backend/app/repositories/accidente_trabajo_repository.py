@@ -10,10 +10,9 @@ class AccidenteTrabajoRepository:
             self._db.table("accidentes_trabajo")
             .insert(data)
             .select("*")
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0]
 
     async def get(self, accidente_id: str, tenant_id: str) -> dict | None:
         res = await (

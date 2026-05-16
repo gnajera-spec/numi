@@ -18,10 +18,9 @@ class ComunicacionAdjuntoRepository:
             self._db.table("comunicacion_adjuntos")
             .insert(payload)
             .select()
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0]
 
     async def list_by_comunicacion(self, comunicacion_id: str) -> list[dict]:
         res = await (

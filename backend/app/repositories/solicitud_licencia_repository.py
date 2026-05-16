@@ -31,10 +31,9 @@ class SolicitudLicenciaRepository:
             self._db.table("solicitudes_licencia")
             .insert(payload)
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0]
 
     async def get(self, solicitud_id: str | UUID) -> dict | None:
         res = await (

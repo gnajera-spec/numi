@@ -37,11 +37,23 @@ class ComunicacionCreate(BaseModel):
 class ComunicacionSummary(BaseModel):
     id: UUID
     asunto: str
+    cuerpo: str
     tipo_segmento: str
+    requiere_confirmacion: bool
     estado: str
     total_destinatarios: int
     enviado_at: datetime | None
     created_at: datetime
+
+
+class DestinatarioOut(BaseModel):
+    id: UUID
+    user_id: UUID
+    nombre: str
+    email: str
+    estado: str
+    leido_at: datetime | None
+    confirmado_at: datetime | None
 
 
 class MetricasOut(BaseModel):
@@ -80,6 +92,8 @@ class ReenviarResponse(BaseModel):
 
 
 # ── Vista colaborador ─────────────────────────────────────────────────────────
+# NOTE: Supabase nested join returns data under the TABLE name key ("comunicaciones"),
+# so the field must be named "comunicaciones" to match Supabase's response format.
 
 class ComunicacionColaboradorItem(BaseModel):
     id: UUID
@@ -87,7 +101,11 @@ class ComunicacionColaboradorItem(BaseModel):
     enviado_at: datetime | None
     leido_at: datetime | None
     confirmado_at: datetime | None
-    comunicacion: dict[str, Any]
+    comunicaciones: dict[str, Any] = Field(default_factory=dict)
+
+
+class LeerResponse(BaseModel):
+    leido_at: str
 
 
 class ConfirmarResponse(BaseModel):

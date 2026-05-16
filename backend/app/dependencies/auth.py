@@ -33,12 +33,18 @@ async def get_current_user(
     if not user or user["estado"] != "activo":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario inactivo")
 
+    # JWT role takes precedence over DB role (supports switchRole)
+    user = dict(user)
+    if "role" in payload:
+        user["role"] = payload["role"]
+
     return user
 
 
 def require_role(*roles: str):
     async def _check(current_user: dict = Depends(get_current_user)) -> dict:
-        if current_user["role"] not in roles:
+        user_roles: list[str] = current_user.get("roles") or [current_user.get("role", "")]
+        if not any(r in user_roles for r in roles):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Sin permisos")
         return current_user
 

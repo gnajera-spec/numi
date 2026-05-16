@@ -69,3 +69,7 @@ class MfaDisableRequest(BaseModel):
 
 class MfaStatusResponse(BaseModel):
     mfa_enabled: bool
+
+
+class SwitchRoleRequest(BaseModel):
+    role: str

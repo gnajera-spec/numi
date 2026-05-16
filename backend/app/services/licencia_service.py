@@ -84,6 +84,16 @@ class LicenciaService:
         row = await self._tipos.create(tenant_id, payload)
         return TipoLicenciaOut.model_validate(row)
 
+    async def delete_tipo(self, tipo_id: str, tenant_id: str) -> None:
+        tipo = await self._tipos.get(tipo_id, tenant_id)
+        if not tipo:
+            from fastapi import HTTPException, status
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
+        deleted = await self._tipos.deactivate(tipo_id)
+        if not deleted:
+            from fastapi import HTTPException, status
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "No se pudo eliminar el tipo")
+
     # ── Políticas ─────────────────────────────────────────────────────────────
 
     async def list_politicas(self, tenant_id: str) -> list[PoliticaLicenciaOut]:

@@ -7,6 +7,7 @@ from app.repositories.mfa_repository import MfaRepository
 from app.repositories.token_repository import TokenRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
+    SwitchRoleRequest,
     ActivateRequest,
     LoginRequest,
     LogoutRequest,
@@ -54,7 +55,21 @@ async def activate(data: ActivateRequest, svc: AuthService = Depends(_svc)):
 
 @router.get("/me", response_model=UserMe)
 async def me(current_user: dict = Depends(get_current_user), svc: AuthService = Depends(_svc)):
-    return await svc.get_me(current_user["id"])
+    user_me = await svc.get_me(current_user["id"])
+    # Override role with JWT role (supports switchRole without touching DB)
+    user_me.role = current_user.get("role", user_me.role)
+    return user_me
+
+
+
+@router.post("/switch-role", response_model=RefreshResponse)
+async def switch_role(
+    data: SwitchRoleRequest,
+    current_user: dict = Depends(get_current_user),
+    svc: AuthService = Depends(_svc),
+):
+    """Cambia el rol activo del usuario y emite nuevos tokens."""
+    return await svc.switch_role(str(current_user["id"]), data.role)
 
 
 # ── MFA ────────────────────────────────────────────────────────────────────

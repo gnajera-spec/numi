@@ -40,5 +40,15 @@ class TipoLicenciaRepository:
             "requiere_certificado": data.get("requiere_certificado", False),
             "dias_maximos": data.get("dias_maximos"),
         }
-        res = await self._db.table("tipos_licencia").insert(payload).select("*").single().execute()
-        return res.data
+        res = await self._db.table("tipos_licencia").insert(payload).select("*").execute()
+        return res.data[0]
+
+    async def deactivate(self, tipo_id: str) -> bool:
+        """Soft-delete por id, sin importar si es global o del tenant."""
+        res = await (
+            self._db.table("tipos_licencia")
+            .update({"is_active": False})
+            .eq("id", tipo_id)
+            .execute()
+        )
+        return bool(res.data)

@@ -10,9 +10,11 @@ class ComunicacionDestinatarioRepository:
     async def bulk_create(self, rows: list[dict]) -> int:
         if not rows:
             return 0
+        # Use upsert with ignore_duplicates=True so re-sending doesn't fail
+        # on the UNIQUE (comunicacion_id, user_id) constraint
         res = await (
             self._db.table("comunicacion_destinatarios")
-            .insert(rows)
+            .upsert(rows, on_conflict="comunicacion_id,user_id", ignore_duplicates=True)
             .execute()
         )
         return len(res.data or [])
@@ -20,7 +22,7 @@ class ComunicacionDestinatarioRepository:
     async def list_by_comunicacion(self, comunicacion_id: str) -> list[dict]:
         res = await (
             self._db.table("comunicacion_destinatarios")
-            .select("*, users(id, nombre, apellido, email, whatsapp_id_hash)")
+            .select("*, users(id, first_name, last_name, email)")
             .eq("comunicacion_id", comunicacion_id)
             .execute()
         )
@@ -37,7 +39,8 @@ class ComunicacionDestinatarioRepository:
             self._db.table("comunicacion_destinatarios")
             .select(
                 "id, estado, enviado_at, leido_at, confirmado_at, "
-                "comunicaciones(id, asunto, cuerpo, requiere_confirmacion, enviado_at)",
+                "comunicaciones(id, asunto, cuerpo, requiere_confirmacion, enviado_at, "
+                "comunicacion_adjuntos(id, filename, file_url, file_size_bytes, mime_type))",
                 count="exact",
             )
             .eq("user_id", user_id)
@@ -55,7 +58,7 @@ class ComunicacionDestinatarioRepository:
     async def get_for_user(self, comunicacion_id: str, user_id: str) -> dict | None:
         res = await (
             self._db.table("comunicacion_destinatarios")
-            .select("*, comunicaciones(id, asunto, cuerpo, requiere_confirmacion)")
+            .select("*, comunicaciones(id, asunto, cuerpo, requiere_confirmacion, comunicacion_adjuntos(id, filename, file_url, file_size_bytes, mime_type))")
             .eq("comunicacion_id", comunicacion_id)
             .eq("user_id", user_id)
             .maybe_single()

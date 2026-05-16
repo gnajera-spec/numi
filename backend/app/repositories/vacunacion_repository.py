@@ -10,10 +10,9 @@ class VacunacionRepository:
             self._db.table("vacunaciones")
             .insert(data)
             .select("*")
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0]
 
     async def list_by_user(self, user_id: str, tenant_id: str) -> list[dict]:
         res = await (

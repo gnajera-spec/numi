@@ -142,5 +142,5 @@ class ReciboRepository:
         ).eq("id", recibo_id).is_("visto_at", "null").execute()
 
     async def create_firma(self, firma_data: dict) -> dict:
-        res = await self._db.table("firmas_electronicas").insert(firma_data).select("*").single().execute()
-        return res.data
+        res = await self._db.table("firmas_electronicas").insert(firma_data).select("*").execute()
+        return res.data[0]

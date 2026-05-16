@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from supabase._async.client import AsyncClient
 
 
-_SELECT_FULL = "*, comunicacion_adjuntos(*), created_by_user:users!created_by(id, nombre, apellido, email)"
+_SELECT_FULL = "*, comunicacion_adjuntos(*), created_by_user:users!created_by(id, first_name, last_name, email)"
 
 
 class ComunicacionRepository:
@@ -26,10 +26,9 @@ class ComunicacionRepository:
             self._db.table("comunicaciones")
             .insert(payload)
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0]
 
     async def get(self, comunicacion_id: str, tenant_id: str) -> dict | None:
         res = await (
@@ -51,7 +50,7 @@ class ComunicacionRepository:
     ) -> tuple[list[dict], int]:
         q = (
             self._db.table("comunicaciones")
-            .select("id, asunto, tipo_segmento, estado, total_destinatarios, enviado_at, created_at", count="exact")
+            .select("id, asunto, cuerpo, tipo_segmento, requiere_confirmacion, estado, total_destinatarios, enviado_at, created_at", count="exact")
             .eq("tenant_id", tenant_id)
             .order("created_at", desc=True)
             .range(offset, offset + limit - 1)
@@ -71,16 +70,17 @@ class ComunicacionRepository:
         payload: dict = {"estado": estado}
         if extra:
             payload.update(extra)
+        # NOTE: .single() is not available on update builders in supabase-py;
+        # update returns a list — take the first (and only) element.
         res = await (
             self._db.table("comunicaciones")
             .update(payload)
             .eq("id", comunicacion_id)
             .eq("tenant_id", tenant_id)
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0] if res.data else {}
 
     async def set_enviado(
         self, comunicacion_id: str, tenant_id: str, total: int

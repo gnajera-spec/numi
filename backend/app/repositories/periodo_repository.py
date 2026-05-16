@@ -60,8 +60,8 @@ class PeriodoRepository:
             flf = data["fecha_limite_firma"]
             payload["fecha_limite_firma"] = flf.isoformat() if isinstance(flf, date) else flf
 
-        res = await self._db.table("periodos_liquidacion").insert(payload).select("*").single().execute()
-        return res.data
+        res = await self._db.table("periodos_liquidacion").insert(payload).select("*").execute()
+        return res.data[0]
 
     async def update_estado(self, periodo_id: str | UUID, estado: str) -> None:
         await self._db.table("periodos_liquidacion").update(
@@ -70,8 +70,8 @@ class PeriodoRepository:
 
     async def increment_total_recibos(self, periodo_id: str | UUID, count: int) -> None:
         # Fetch current and update atomically via RPC or read-modify-write
-        res = await self._db.table("periodos_liquidacion").select("total_recibos").eq("id", str(periodo_id)).single().execute()
-        current = res.data.get("total_recibos", 0) if res.data else 0
+        res = await self._db.table("periodos_liquidacion").select("total_recibos").eq("id", str(periodo_id)).execute()
+        current = res.data[0].get("total_recibos", 0) if res.data else 0
         await self._db.table("periodos_liquidacion").update(
             {"total_recibos": current + count}
         ).eq("id", str(periodo_id)).execute()

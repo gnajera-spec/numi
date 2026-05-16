@@ -163,3 +163,21 @@ class AuthService:
             "refresh_token": refresh_token,
             "token_type": "bearer",
         }
+
+    async def switch_role(self, user_id: str, target_role: str) -> dict:
+        """Emite un nuevo par de tokens con el rol activo cambiado.
+        Solo permite roles que el usuario tenga asignados en su array roles[]."""
+        user = await self._users.get_by_id_with_profile(user_id)
+        if not user:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuario no encontrado")
+
+        allowed_roles: list[str] = user.get("roles") or [user.get("role", "")]
+        if target_role not in allowed_roles:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"El rol '{target_role}' no está asignado a este usuario"
+            )
+
+        # Emitir tokens con el nuevo rol como rol primario
+        user_with_role = {**user, "role": target_role}
+        return await self._issue_token_pair(user_with_role)
