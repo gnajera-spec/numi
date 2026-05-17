@@ -7,7 +7,8 @@ from supabase._async.client import AsyncClient
 _SELECT_FULL = (
     "*, "
     "tipos_licencia(id, codigo, nombre, es_medica), "
-    "documentos_solicitud(*)"
+    "documentos_solicitud(*), "
+    "users!solicitudes_licencia_user_id_fkey(first_name, last_name, cuil)"
 )
 
 

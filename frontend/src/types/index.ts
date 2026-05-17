@@ -83,7 +83,7 @@ export interface TipoLicencia {
 export interface SolicitudLicencia {
   id: string;
   numero_solicitud: string;
-  tipo_licencia: { id: string; codigo: string; nombre: string };
+  tipo_licencia: { id: string; codigo: string; nombre: string; es_medica?: boolean };
   fecha_inicio: string;
   fecha_fin: string;
   dias_habiles: number;
@@ -95,6 +95,9 @@ export interface SolicitudLicencia {
   flujo_id?: string | null;
   paso_actual?: number | null;
   created_at: string;
+  // Solicitante
+  user_nombre?: string;
+  user_cuil?: string;
   // Medical fields
   medico_nombre?: string;
   medico_apellido?: string;

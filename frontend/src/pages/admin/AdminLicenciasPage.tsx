@@ -211,7 +211,17 @@ function ReviewModal({ solicitud, action, onClose, onDone }: ReviewModalProps) {
           className="rounded-lg p-3 mb-4"
           style={{ background: "var(--color-surface-empty)" }}
         >
-          <p className="text-sm font-semibold" style={{ color: "var(--color-content-primary)" }}>
+          {solicitud.user_nombre && (
+            <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-content-primary)" }}>
+              {solicitud.user_nombre}
+              {solicitud.user_cuil && (
+                <span className="font-normal ml-2 text-xs" style={{ color: "var(--color-content-secondary)" }}>
+                  CUIL {solicitud.user_cuil}
+                </span>
+              )}
+            </p>
+          )}
+          <p className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
             {solicitud.tipo_licencia.nombre}
           </p>
           <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
@@ -366,6 +376,16 @@ export function AdminLicenciasPage() {
                         Nº {sol.numero_solicitud}
                       </span>
                     </div>
+                    {sol.user_nombre && (
+                      <p className="text-sm font-medium mb-0.5" style={{ color: "var(--color-content-primary)" }}>
+                        {sol.user_nombre}
+                        {sol.user_cuil && (
+                          <span className="font-normal ml-2 text-xs" style={{ color: "var(--color-content-secondary)" }}>
+                            CUIL {sol.user_cuil}
+                          </span>
+                        )}
+                      </p>
+                    )}
                     <p className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
                       {fmtDate(sol.fecha_inicio)} → {fmtDate(sol.fecha_fin)} · {sol.dias_habiles} días hábiles
                     </p>
