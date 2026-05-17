@@ -8,6 +8,7 @@ export interface PasoFlujoCreate {
   departamento_id?: string;
   sla_horas?: number;
   requiere_comentario: boolean;
+  tipo_accion: "aprobar" | "solo_ver" | "derivar";
 }
 
 export interface FlujoCreate {
@@ -35,6 +36,7 @@ export interface PasoFlujoOut {
   departamento_nombre: string | null;
   sla_horas: number | null;
   requiere_comentario: boolean;
+  tipo_accion: "aprobar" | "solo_ver" | "derivar";
   created_at: string;
 }
 
@@ -72,32 +74,26 @@ const BASE = "/admin/flujos-aprobacion";
 
 export const flujoAprobacionService = {
   async list(): Promise<TipoLicenciaConFlujo[]> {
-    const r = await apiClient.get<TipoLicenciaConFlujo[]>(BASE);
-    return r.data;
+    return apiClient.get<TipoLicenciaConFlujo[]>(BASE);
   },
 
   async get(flujoId: string): Promise<FlujoAprobacionOut> {
-    const r = await apiClient.get<FlujoAprobacionOut>(`${BASE}/${flujoId}`);
-    return r.data;
+    return apiClient.get<FlujoAprobacionOut>(`${BASE}/${flujoId}`);
   },
 
   async create(data: FlujoCreate): Promise<FlujoAprobacionOut> {
-    const r = await apiClient.post<FlujoAprobacionOut>(BASE, data);
-    return r.data;
+    return apiClient.post<FlujoAprobacionOut>(BASE, data);
   },
 
   async update(flujoId: string, data: FlujoUpdate): Promise<FlujoAprobacionOut> {
-    const r = await apiClient.put<FlujoAprobacionOut>(`${BASE}/${flujoId}`, data);
-    return r.data;
+    return apiClient.put<FlujoAprobacionOut>(`${BASE}/${flujoId}`, data);
   },
 
   async deactivate(flujoId: string): Promise<FlujoAprobacionOut> {
-    const r = await apiClient.patch<FlujoAprobacionOut>(`${BASE}/${flujoId}/deactivate`);
-    return r.data;
+    return apiClient.patch<FlujoAprobacionOut>(`${BASE}/${flujoId}/deactivate`, {});
   },
 
   async getDepartamentos(): Promise<DepartamentoOption[]> {
-    const r = await apiClient.get<DepartamentoOption[]>(`${BASE}/departamentos`);
-    return r.data;
+    return apiClient.get<DepartamentoOption[]>(`${BASE}/departamentos`);
   },
 };

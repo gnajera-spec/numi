@@ -20,6 +20,7 @@ from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
 from app.schemas.flujos_aprobacion import (
     AprobacionSolicitudOut,
     AprobarPasoRequest,
+    DerivarPasoRequest,
     RechazarPasoRequest,
 )
 from app.schemas.licencias import (
@@ -117,6 +118,14 @@ class LicenciaService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
         return TipoLicenciaOut.model_validate(row)
 
+    async def delete_tipo(self, tipo_id: str, tenant_id: str) -> None:
+        tipo = await self._tipos.get(tipo_id, tenant_id)
+        if not tipo:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
+        if tipo.get("tenant_id") is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No se pueden eliminar tipos de licencia globales")
+        await self._tipos.deactivate(tipo_id)
+
     # ── Políticas ─────────────────────────────────────────────────────────────
 
     async def list_politicas(self, tenant_id: str) -> list[PoliticaLicenciaOut]:
@@ -150,6 +159,25 @@ class LicenciaService:
         return PaginatedSolicitudes(
             data=[SolicitudLicenciaOut.from_row(r) for r in rows],
             pagination=_build_pagination(total, page, page_size, "/licencias/solicitudes"),
+        )
+
+    async def list_solicitudes_medicas(
+        self,
+        tenant_id: str,
+        *,
+        estado: str | None = None,
+        user_id: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> PaginatedSolicitudes:
+        """Lista solicitudes de tipo médico (es_medica=True). Acceso: servicio_medico, rrhh, admin."""
+        rows, total = await self._solicitudes.list_all(
+            tenant_id, estado=estado, user_id=user_id, es_medica=True,
+            page=page, page_size=page_size,
+        )
+        return PaginatedSolicitudes(
+            data=[SolicitudLicenciaOut.from_row(r) for r in rows],
+            pagination=_build_pagination(total, page, page_size, "/licencias/solicitudes-medicas"),
         )
 
     async def create_solicitud(
@@ -205,6 +233,14 @@ class LicenciaService:
             "comentario_empleado": data.comentario,
             "canal": canal,
         }
+        if data.medico_nombre:
+            solicitud_data["medico_nombre"] = data.medico_nombre
+        if data.medico_apellido:
+            solicitud_data["medico_apellido"] = data.medico_apellido
+        if data.medico_matricula:
+            solicitud_data["medico_matricula"] = data.medico_matricula
+        if data.dias_reposo:
+            solicitud_data["dias_reposo"] = data.dias_reposo
         if flujo:
             solicitud_data["flujo_id"] = str(flujo["id"])
             solicitud_data["paso_actual"] = 1
@@ -226,9 +262,13 @@ class LicenciaService:
                     "rol_aprobador": paso.get("rol_aprobador"),
                     "departamento_id": str(paso["departamento_id"]) if paso.get("departamento_id") else None,
                     "departamento_nombre": paso.get("departamento_nombre"),
+                    "tipo_accion": paso.get("tipo_accion", "aprobar"),
                     "estado": "pendiente",
                 })
             await self._aprobaciones.create_many(aprobacion_rows)
+
+            # Auto-advance any leading 'solo_ver' steps immediately
+            row = await self._auto_advance_solo_ver(row, pasos, tenant_id)
 
         # Update saldo: increment dias_pendientes
         anio = data.fecha_inicio.year
@@ -606,6 +646,8 @@ class LicenciaService:
                 "estado": "en_revision",
                 "paso_actual": next_paso,
             })
+            # Auto-advance any 'solo_ver' steps at the new position
+            updated = await self._auto_advance_solo_ver(updated, paso_def, str(row["tenant_id"]))
 
         return SolicitudLicenciaOut.from_row(updated)
 
@@ -663,6 +705,118 @@ class LicenciaService:
             str(row["tipo_licencia_id"]), anio, row["dias_habiles"],
         )
         await self._notify_wa(row, "rechazada", comentario=data.comentario)
+
+        return SolicitudLicenciaOut.from_row(updated)
+
+    async def _auto_advance_solo_ver(
+        self, solicitud_row: dict, pasos_def: list[dict], tenant_id: str
+    ) -> dict:
+        """After creating a solicitud with a flow, auto-advance any 'solo_ver' steps at the start."""
+        from datetime import datetime, timezone
+        paso_actual = solicitud_row.get("paso_actual", 1) or 1
+        total = len(pasos_def)
+
+        while paso_actual <= total:
+            paso = next((p for p in pasos_def if p["orden"] == paso_actual), None)
+            if not paso or paso.get("tipo_accion", "aprobar") != "solo_ver":
+                break
+            # Mark this step as aprobado (auto) and advance
+            aprobacion = await self._aprobaciones.get_current_paso(str(solicitud_row["id"]), paso_actual)
+            if aprobacion:
+                now = datetime.now(timezone.utc)
+                await self._aprobaciones.update_paso(str(aprobacion["id"]), {
+                    "estado": "aprobado",
+                    "comentario": "Paso de solo notificación — avance automático",
+                    "fecha_decision": now.isoformat(),
+                })
+            paso_actual += 1
+            if paso_actual > total:
+                # All steps were solo_ver — fully approve
+                solicitud_row = await self._solicitudes.update_estado(
+                    solicitud_row["id"], "aprobada"
+                )
+            else:
+                solicitud_row = await self._solicitudes.update({
+                    "id": str(solicitud_row["id"]),
+                    "estado": "en_revision",
+                    "paso_actual": paso_actual,
+                })
+        return solicitud_row
+
+    async def derivar_paso(
+        self,
+        solicitud_id: str | UUID,
+        current_user: dict,
+        data: DerivarPasoRequest,
+    ) -> SolicitudLicenciaOut:
+        """Deriva el paso actual al siguiente sin aprobar ni rechazar."""
+        if not self._aprobaciones or not self._flujos:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Módulo de flujos no disponible")
+
+        row = await self._solicitudes.get(solicitud_id)
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if str(row["tenant_id"]) != str(current_user["tenant_id"]):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if row["estado"] not in ("pendiente", "en_revision"):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"La solicitud no está en estado procesable (estado: {row['estado']})"
+            )
+        if not row.get("flujo_id"):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Esta solicitud no tiene un flujo de aprobación configurado"
+            )
+
+        paso_actual_num = row["paso_actual"]
+        aprobacion = await self._aprobaciones.get_current_paso(str(solicitud_id), paso_actual_num)
+        if not aprobacion:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paso de aprobación no encontrado")
+        if aprobacion["estado"] != "pendiente":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Este paso ya fue resuelto")
+        if aprobacion.get("tipo_accion") != "derivar":
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Este paso no permite derivación — solo pasos con tipo_accion='derivar' pueden derivarse"
+            )
+
+        await self._check_paso_authorization(aprobacion, current_user, row)
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        await self._aprobaciones.update_paso(str(aprobacion["id"]), {
+            "estado": "derivado",
+            "aprobado_por": str(current_user["id"]),
+            "comentario": data.comentario,
+            "fecha_decision": now.isoformat(),
+        })
+
+        paso_def = await self._flujos.get_pasos(str(row["flujo_id"]))
+        total_pasos = len(paso_def)
+        is_last = paso_actual_num >= total_pasos
+
+        if is_last:
+            # Derivar en el último paso aprueba la solicitud
+            updated = await self._solicitudes.update_estado(
+                solicitud_id, "aprobada",
+                revisado_por=str(current_user["id"]),
+                comentario_rrhh=data.comentario,
+            )
+            anio = row["fecha_inicio"].year if isinstance(row["fecha_inicio"], date) else int(str(row["fecha_inicio"])[:4])
+            await self._saldos.approve(
+                str(row["tenant_id"]), str(row["user_id"]),
+                str(row["tipo_licencia_id"]), anio, row["dias_habiles"],
+            )
+        else:
+            next_paso = paso_actual_num + 1
+            updated = await self._solicitudes.update({
+                "id": str(solicitud_id),
+                "estado": "en_revision",
+                "paso_actual": next_paso,
+            })
+            # Auto-advance any next solo_ver steps
+            updated = await self._auto_advance_solo_ver(updated, paso_def, str(row["tenant_id"]))
 
         return SolicitudLicenciaOut.from_row(updated)
 

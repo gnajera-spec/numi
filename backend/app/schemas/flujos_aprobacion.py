@@ -14,6 +14,7 @@ class PasoFlujoCreate(BaseModel):
     departamento_id: UUID | None = None
     sla_horas: int | None = Field(None, gt=0)
     requiere_comentario: bool = False
+    tipo_accion: str = "aprobar"  # 'aprobar' | 'solo_ver' | 'derivar'
 
     @model_validator(mode="after")
     def check_aprobador_exclusivity(self) -> "PasoFlujoCreate":
@@ -27,6 +28,8 @@ class PasoFlujoCreate(BaseModel):
                 raise ValueError("Paso tipo 'departamento' requiere departamento_id y no debe tener rol_aprobador")
         else:
             raise ValueError("tipo_aprobador debe ser 'rol' o 'departamento'")
+        if self.tipo_accion not in ("aprobar", "solo_ver", "derivar"):
+            raise ValueError("tipo_accion debe ser 'aprobar', 'solo_ver' o 'derivar'")
         return self
 
 
@@ -42,6 +45,7 @@ class PasoFlujoOut(BaseModel):
     departamento_nombre: str | None = None
     sla_horas: int | None
     requiere_comentario: bool
+    tipo_accion: str = "aprobar"
     created_at: datetime
 
 
@@ -112,6 +116,10 @@ class AprobarPasoRequest(BaseModel):
 
 class RechazarPasoRequest(BaseModel):
     comentario: str = Field(..., min_length=1)
+
+
+class DerivarPasoRequest(BaseModel):
+    comentario: str | None = None
 
 
 class AprobacionSolicitudOut(BaseModel):

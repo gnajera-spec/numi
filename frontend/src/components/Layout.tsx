@@ -100,7 +100,7 @@ const PORTAL_MAP: Record<string, PortalConfig> = {
   rrhh:            { label: 'Portal RRHH',        sublabel: 'Recursos Humanos',         icon: Briefcase,    color: '#226080',                path: '/admin/dashboard'       },
   super_admin:     { label: 'Portal RRHH',        sublabel: 'Super Administrador',      icon: Briefcase,    color: '#226080',                path: '/admin/dashboard'       },
   admin_empresa:   { label: 'Admin Empresa',      sublabel: 'Administrador del tenant', icon: Building2,    color: '#75559b',                path: '/admin/organizacion'    },
-  servicio_medico: { label: 'Portal Médico',      sublabel: 'Servicio Médico',          icon: Stethoscope,  color: '#1a7a45',                path: '/admin/medico/fichas'   },
+  servicio_medico: { label: 'Portal Médico',      sublabel: 'Servicio Médico',          icon: Stethoscope,  color: '#1a7a45',                path: '/employee/medico/licencias' },
 };
 
 function buildPortals(

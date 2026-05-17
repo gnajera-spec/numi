@@ -1,11 +1,10 @@
 import { useEffect, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Send, CheckCircle, Server, Sparkles, ArrowLeft } from "lucide-react";
-import { AdminLayout } from "../../components/AdminLayout";
+import { Eye, EyeOff, Send, CheckCircle } from "lucide-react";
+import { SuperAdminLayout } from "../../components/SuperAdminLayout";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Spinner } from "../../components/Spinner";
-import { smtpConfigService, type SmtpConfigIn } from "../../services/smtpConfigService";
+import { superAdminSmtpService, type NumiSmtpConfigIn } from "../../services/superAdminSmtpService";
 
 interface FormState {
   host: string;
@@ -16,7 +15,6 @@ interface FormState {
   from_name: string;
   use_tls: boolean;
   activo: boolean;
-  use_numi_smtp: boolean;
 }
 
 const emptyForm: FormState = {
@@ -25,13 +23,12 @@ const emptyForm: FormState = {
   username: "",
   password: "",
   from_email: "",
-  from_name: "",
+  from_name: "NUMI",
   use_tls: true,
   activo: true,
-  use_numi_smtp: true,
 };
 
-function toServicePayload(form: FormState): SmtpConfigIn {
+function toPayload(form: FormState): NumiSmtpConfigIn {
   return {
     host: form.host,
     port: Number(form.port) || 587,
@@ -41,7 +38,6 @@ function toServicePayload(form: FormState): SmtpConfigIn {
     from_name: form.from_name,
     use_tls: form.use_tls,
     activo: form.activo,
-    use_numi_smtp: form.use_numi_smtp,
   };
 }
 
@@ -79,60 +75,7 @@ function FieldGroup({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
-function ModeCard({
-  selected,
-  icon,
-  title,
-  description,
-  onClick,
-}: {
-  selected: boolean;
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex-1 rounded-xl border-2 p-4 text-left transition-all"
-      style={{
-        borderColor: selected ? "var(--color-primary)" : "var(--color-surface-border)",
-        background: selected ? "var(--color-primary-xlight)" : "var(--color-surface-card)",
-        cursor: "pointer",
-      }}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className="mt-0.5 p-2 rounded-lg"
-          style={{
-            background: selected ? "var(--color-primary-light)" : "var(--color-surface-app)",
-            color: selected ? "var(--color-primary)" : "var(--color-content-secondary)",
-          }}
-        >
-          {icon}
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--color-content-primary)" }}>
-            {title}
-            {selected && (
-              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full" style={{ background: "var(--color-primary)", color: "#fff" }}>
-                Activo
-              </span>
-            )}
-          </span>
-          <span className="text-xs leading-relaxed" style={{ color: "var(--color-content-secondary)" }}>
-            {description}
-          </span>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-export function AdminSmtpConfigPage() {
-  const navigate = useNavigate();
+export function SuperAdminSmtpPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -154,10 +97,9 @@ export function AdminSmtpConfigPage() {
       username: (cfg as { username?: string }).username ?? "",
       password: "",
       from_email: (cfg as { from_email?: string }).from_email ?? "",
-      from_name: (cfg as { from_name?: string }).from_name ?? "",
+      from_name: (cfg as { from_name?: string }).from_name ?? "NUMI",
       use_tls: (cfg as { use_tls?: boolean }).use_tls ?? true,
       activo: (cfg as { activo?: boolean }).activo ?? true,
-      use_numi_smtp: (cfg as { use_numi_smtp?: boolean }).use_numi_smtp ?? true,
     };
     setForm(loaded);
     savedFormRef.current = loaded;
@@ -166,7 +108,7 @@ export function AdminSmtpConfigPage() {
   }
 
   useEffect(() => {
-    smtpConfigService.get()
+    superAdminSmtpService.get()
       .then((res) => applyConfig(res as Parameters<typeof applyConfig>[0]))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -178,9 +120,10 @@ export function AdminSmtpConfigPage() {
     setForm((c) => {
       const next = { ...c, [field]: value };
       const ref = savedFormRef.current;
-      const dirty = (Object.keys(next) as (keyof FormState)[]).some(
-        (k) => k !== "password" && next[k] !== ref[k]
-      ) || next.password !== "";
+      const dirty =
+        (Object.keys(next) as (keyof FormState)[]).some(
+          (k) => k !== "password" && next[k] !== ref[k]
+        ) || next.password !== "";
       setIsDirty(dirty);
       if (dirty) setSaved(false);
       return next;
@@ -189,12 +132,12 @@ export function AdminSmtpConfigPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!confirm("¿Guardar los cambios en la configuración de email?")) return;
+    if (!confirm("¿Guardar la configuración SMTP de NUMI?")) return;
     setSaving(true);
     setError(null);
     setSuccessMsg(null);
     try {
-      await smtpConfigService.upsert(toServicePayload(form));
+      await superAdminSmtpService.upsert(toPayload(form));
       setSuccessMsg("Configuración guardada correctamente.");
       savedFormRef.current = { ...form, password: "" };
       setForm((f) => ({ ...f, password: "" }));
@@ -213,8 +156,7 @@ export function AdminSmtpConfigPage() {
     setError(null);
     setSuccessMsg(null);
     try {
-      const payload = { ...toServicePayload(form), test_to: testEmail.trim() };
-      const res = await smtpConfigService.test(payload) as unknown as { ok: boolean; message: string };
+      const res = await superAdminSmtpService.test(toPayload(form), testEmail.trim()) as unknown as { ok: boolean; message: string };
       if (res.ok) {
         setSuccessMsg(res.message || `Correo de prueba enviado a ${testEmail}.`);
         setShowTestInput(false);
@@ -231,29 +173,31 @@ export function AdminSmtpConfigPage() {
 
   if (loading) {
     return (
-      <AdminLayout>
+      <SuperAdminLayout>
         <div className="flex justify-center py-16"><Spinner size={28} /></div>
-      </AdminLayout>
+      </SuperAdminLayout>
     );
   }
 
   return (
-    <AdminLayout>
+    <SuperAdminLayout>
       <div className="flex flex-col gap-6 max-w-2xl">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold" style={{ color: "var(--color-content-primary)" }}>
-              Configuración de email
+              Servidor de email NUMI
             </h1>
             <p className="text-sm mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
-              Servidor de envío para notificaciones y comunicaciones a colaboradores
+              Este servidor será usado por todas las empresas que elijan "Servidor NUMI" como método de envío.
             </p>
           </div>
           {saved && !isDirty && (
-            <div className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full shrink-0 mt-1"
-              style={{ background: "var(--color-state-present-bg, #f0fdf4)", color: "var(--color-state-present)" }}>
+            <div
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full shrink-0 mt-1"
+              style={{ background: "var(--color-state-present-bg, #f0fdf4)", color: "var(--color-state-present)" }}
+            >
               <CheckCircle size={13} />
               Configurado
             </div>
@@ -263,8 +207,10 @@ export function AdminSmtpConfigPage() {
         {error && <ErrorBanner message={error} />}
 
         {successMsg && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium"
-            style={{ background: "var(--color-state-present-bg, #f0fdf4)", color: "var(--color-state-present)" }}>
+          <div
+            className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium"
+            style={{ background: "var(--color-state-present-bg, #f0fdf4)", color: "var(--color-state-present)" }}
+          >
             <CheckCircle size={15} />
             {successMsg}
           </div>
@@ -272,105 +218,83 @@ export function AdminSmtpConfigPage() {
 
         <form onSubmit={handleSave} className="flex flex-col gap-4">
 
-          {/* Modo — selector visual */}
-          <div className="flex gap-3">
-            <ModeCard
-              selected={form.use_numi_smtp}
-              icon={<Sparkles size={16} />}
-              title="Servidor de NUMI"
-              description="Recomendado. Sin configuración, listo para usar."
-              onClick={() => set("use_numi_smtp")(true)}
-            />
-            <ModeCard
-              selected={!form.use_numi_smtp}
-              icon={<Server size={16} />}
-              title="Servidor propio"
-              description="Configurá tu propio servidor SMTP."
-              onClick={() => set("use_numi_smtp")(false)}
-            />
-          </div>
-
-          {/* Servidor SMTP propio */}
-          {!form.use_numi_smtp && (
-            <SectionCard title="Servidor SMTP">
-              <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                  <FieldGroup label="Host">
-                    <input
-                      required
-                      value={form.host}
-                      onChange={(e) => set("host")(e.target.value)}
-                      placeholder="smtp.tuempresa.com"
-                      className={inputClass}
-                      style={inputStyle}
-                    />
-                  </FieldGroup>
-                </div>
-                <div style={{ width: 90 }}>
-                  <FieldGroup label="Puerto">
-                    <input
-                      required
-                      type="number"
-                      value={form.port}
-                      onChange={(e) => set("port")(e.target.value)}
-                      placeholder="587"
-                      className={inputClass}
-                      style={inputStyle}
-                    />
-                  </FieldGroup>
-                </div>
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer w-fit">
-                <input
-                  type="checkbox"
-                  checked={form.use_tls}
-                  onChange={(e) => set("use_tls")(e.target.checked)}
-                  className="w-4 h-4 rounded"
-                  style={{ accentColor: "var(--color-primary)" }}
-                />
-                <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>Usar TLS/STARTTLS</span>
-              </label>
-            </SectionCard>
-          )}
-
-          {/* Credenciales */}
-          {!form.use_numi_smtp && (
-            <SectionCard title="Credenciales">
-              <FieldGroup label="Usuario">
-                <input
-                  value={form.username}
-                  onChange={(e) => set("username")(e.target.value)}
-                  placeholder="tu@empresa.com"
-                  className={inputClass}
-                  style={inputStyle}
-                />
-              </FieldGroup>
-              <FieldGroup label="Contraseña" hint="Dejá en blanco para conservar la contraseña guardada.">
-                <div className="relative">
+          {/* Servidor */}
+          <SectionCard title="Servidor SMTP">
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <FieldGroup label="Host">
                   <input
-                    type={showPassword ? "text" : "password"}
-                    value={form.password}
-                    onChange={(e) => set("password")(e.target.value)}
-                    placeholder="••••••••"
-                    className={inputClass + " pr-10"}
+                    required
+                    value={form.host}
+                    onChange={(e) => set("host")(e.target.value)}
+                    placeholder="smtp.tuempresa.com"
+                    className={inputClass}
                     style={inputStyle}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded"
-                    style={{ color: "var(--color-content-secondary)" }}
-                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                  >
-                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </FieldGroup>
-            </SectionCard>
-          )}
+                </FieldGroup>
+              </div>
+              <div style={{ width: 90 }}>
+                <FieldGroup label="Puerto">
+                  <input
+                    required
+                    type="number"
+                    value={form.port}
+                    onChange={(e) => set("port")(e.target.value)}
+                    placeholder="587"
+                    className={inputClass}
+                    style={inputStyle}
+                  />
+                </FieldGroup>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={form.use_tls}
+                onChange={(e) => set("use_tls")(e.target.checked)}
+                className="w-4 h-4 rounded"
+                style={{ accentColor: "var(--color-primary)" }}
+              />
+              <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>Usar TLS/STARTTLS</span>
+            </label>
+          </SectionCard>
 
-          {/* Remitente — solo cuando usan servidor propio */}
-          {!form.use_numi_smtp && <SectionCard title="Remitente">
+          {/* Credenciales */}
+          <SectionCard title="Credenciales">
+            <FieldGroup label="Usuario">
+              <input
+                value={form.username}
+                onChange={(e) => set("username")(e.target.value)}
+                placeholder="noreply@numi.app"
+                className={inputClass}
+                style={inputStyle}
+              />
+            </FieldGroup>
+            <FieldGroup label="Contraseña" hint="Dejá en blanco para conservar la contraseña guardada.">
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(e) => set("password")(e.target.value)}
+                  placeholder="••••••••"
+                  className={inputClass + " pr-10"}
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded"
+                  style={{ color: "var(--color-content-secondary)" }}
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </FieldGroup>
+          </SectionCard>
+
+          {/* Remitente */}
+          <SectionCard title="Remitente">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FieldGroup label="Nombre">
                 <input
@@ -386,13 +310,13 @@ export function AdminSmtpConfigPage() {
                   type="email"
                   value={form.from_email}
                   onChange={(e) => set("from_email")(e.target.value)}
-                  placeholder="noreply@empresa.com"
+                  placeholder="noreply@numi.app"
                   className={inputClass}
                   style={inputStyle}
                 />
               </FieldGroup>
             </div>
-          </SectionCard>}
+          </SectionCard>
 
           {/* Acciones */}
           <div className="flex flex-col gap-3">
@@ -402,33 +326,19 @@ export function AdminSmtpConfigPage() {
                   {saving ? "Guardando…" : "Guardar configuración"}
                 </Button>
               )}
-              {saved && !isDirty && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => navigate("/admin/configuracion")}
-                  className="flex items-center gap-2"
-                >
-                  <ArrowLeft size={14} />
-                  Volver a configuración
-                </Button>
-              )}
-              {!form.use_numi_smtp && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={testing}
-                  onClick={() => setShowTestInput((v) => !v)}
-                  className="flex items-center gap-2"
-                >
-                  <Send size={14} />
-                  Enviar correo de prueba
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={testing}
+                onClick={() => setShowTestInput((v) => !v)}
+                className="flex items-center gap-2"
+              >
+                <Send size={14} />
+                Enviar correo de prueba
+              </Button>
             </div>
 
-            {/* Input inline para correo de prueba */}
-            {showTestInput && !form.use_numi_smtp && (
+            {showTestInput && (
               <div
                 className="flex items-center gap-2 p-3 rounded-xl border"
                 style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}
@@ -460,6 +370,6 @@ export function AdminSmtpConfigPage() {
 
         </form>
       </div>
-    </AdminLayout>
+    </SuperAdminLayout>
   );
 }

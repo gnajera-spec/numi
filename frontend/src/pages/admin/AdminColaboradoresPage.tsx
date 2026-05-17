@@ -9,11 +9,11 @@ import { Badge } from "../../components/Badge";
 import { adminUsuariosService } from "../../services/adminUsuariosService";
 import type { UserSummary, EstadoUsuario } from "../../types";
 
-const estadoVariant: Record<EstadoUsuario, "success" | "warning" | "error" | "neutral"> = {
-  activo:     "success",
-  pendiente:  "warning",
-  suspendido: "error",
-  baja:       "neutral",
+const estadoVariant: Record<EstadoUsuario, "activo" | "pendiente" | "suspendido" | "baja"> = {
+  activo:     "activo",
+  pendiente:  "pendiente",
+  suspendido: "suspendido",
+  baja:       "baja",
 };
 const estadoLabel: Record<EstadoUsuario, string> = {
   activo:     "Activo",

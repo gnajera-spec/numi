@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Plus, X, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, X, ChevronDown, AlertTriangle } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
+import { Spinner } from "../../components/Spinner";
 import { flujoAprobacionService } from "../../services/flujoAprobacionService";
 import type { DepartamentoOption, PasoFlujoCreate, FlujoAprobacionOut } from "../../services/flujoAprobacionService";
 
@@ -19,18 +20,16 @@ const EMPTY_PASO: PasoFlujoCreate = {
   tipo_aprobador: "rol",
   rol_aprobador: "rrhh",
   requiere_comentario: false,
+  tipo_accion: "aprobar",
 };
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 8,
-  border: "1px solid var(--color-border)",
-  padding: "8px 12px",
-  fontSize: 13,
-  color: "var(--color-text-primary)",
-  background: "var(--color-bg-app)",
-  outline: "none",
-  boxSizing: "border-box",
+const inputClass =
+  "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[--color-primary] transition";
+
+const inputStyle = {
+  borderColor: "var(--color-surface-border)",
+  color: "var(--color-content-primary)",
+  background: "var(--color-surface-app)",
 };
 
 function PasoCard({
@@ -60,61 +59,57 @@ function PasoCard({
   };
 
   return (
-    <div style={{
-      background: "var(--color-bg-card)",
-      border: "1px solid var(--color-border)",
-      borderRadius: 14, padding: 20,
-      display: "flex", flexDirection: "column", gap: 16,
-    }}>
-      {/* Step header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{
-          fontSize: 11, fontWeight: 700, letterSpacing: "0.7px", textTransform: "uppercase",
-          color: "var(--color-primary)",
-        }}>
+    <div
+      className="rounded-xl border p-5 flex flex-col gap-4"
+      style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <span
+          className="text-xs font-bold uppercase tracking-wider"
+          style={{ color: "var(--color-primary)" }}
+        >
           Paso {index + 1}
         </span>
         {total > 1 && (
           <button
             type="button"
             onClick={onRemove}
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              background: "none", border: "none", cursor: "pointer", padding: "4px 8px",
-              borderRadius: 6, fontSize: 12, color: "var(--color-text-secondary)",
-            }}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition hover:bg-red-50 hover:text-red-600"
+            style={{ color: "var(--color-content-secondary)", background: "none", border: "none", cursor: "pointer" }}
           >
-            <X size={13} /> Eliminar
+            <X size={12} /> Eliminar
           </button>
         )}
       </div>
 
       {/* Nombre */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <label style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>Nombre del paso</label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+          Nombre del paso
+        </label>
         <input
           required
           value={paso.nombre}
           onChange={e => set("nombre", e.target.value)}
           placeholder="Ej: Aprobación Jefe de Área"
+          className={inputClass}
           style={inputStyle}
         />
       </div>
 
       {/* Tipo de aprobador */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <label style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>Aprobador</label>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div className="flex flex-col gap-3">
+        <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+          Aprobador
+        </label>
+        <div className="flex gap-5">
           {(["rol", "departamento"] as const).map(tipo => (
-            <label key={tipo} style={{
-              display: "flex", alignItems: "center", gap: 6,
-              cursor: "pointer", fontSize: 13, color: "var(--color-text-primary)",
-            }}>
+            <label key={tipo} className="flex items-center gap-2 cursor-pointer text-sm" style={{ color: "var(--color-content-primary)" }}>
               <input
                 type="radio"
                 checked={paso.tipo_aprobador === tipo}
                 onChange={() => switchTipo(tipo)}
-                style={{ accentColor: "var(--color-primary)" }}
               />
               {tipo === "rol" ? "Por rol del sistema" : "Por departamento"}
             </label>
@@ -125,6 +120,7 @@ function PasoCard({
           <select
             value={paso.rol_aprobador}
             onChange={e => set("rol_aprobador", e.target.value as PasoFlujoCreate["rol_aprobador"])}
+            className={inputClass}
             style={inputStyle}
           >
             {ROL_OPTIONS.map(r => (
@@ -135,11 +131,12 @@ function PasoCard({
 
         {paso.tipo_aprobador === "departamento" && (
           departamentos.length === 0
-            ? <p style={{ fontSize: 12, color: "var(--color-text-disabled)" }}>No hay departamentos activos.</p>
+            ? <p className="text-xs" style={{ color: "var(--color-content-disabled)" }}>No hay departamentos activos.</p>
             : (
               <select
                 value={paso.departamento_id}
                 onChange={e => set("departamento_id", e.target.value)}
+                className={inputClass}
                 style={inputStyle}
               >
                 {departamentos.map(d => (
@@ -151,9 +148,9 @@ function PasoCard({
       </div>
 
       {/* SLA + comentario */}
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 160 }}>
-          <label style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>
+      <div className="flex flex-wrap items-end gap-5">
+        <div className="flex flex-col gap-1 w-40">
+          <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
             SLA (horas hábiles)
           </label>
           <input
@@ -162,17 +159,42 @@ function PasoCard({
             value={paso.sla_horas ?? ""}
             onChange={e => set("sla_horas", e.target.value ? Number(e.target.value) : undefined)}
             placeholder="Sin SLA"
+            className={inputClass}
             style={inputStyle}
           />
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", paddingBottom: 2 }}>
+        {/* Tipo de acción */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium" style={{ color: "var(--color-content-secondary)" }}>
+            Acción del aprobador
+          </span>
+          <div className="flex gap-2 flex-wrap">
+            {(["aprobar", "solo_ver", "derivar"] as const).map(accion => (
+              <label key={accion} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name={`tipo_accion_${paso.orden}`}
+                  value={accion}
+                  checked={paso.tipo_accion === accion}
+                  onChange={() => set("tipo_accion", accion)}
+                  className="w-3.5 h-3.5"
+                />
+                <span className="text-xs" style={{ color: "var(--color-content-primary)" }}>
+                  {accion === "aprobar" ? "Aprobar / Rechazar" : accion === "solo_ver" ? "Solo notificar" : "Derivar al siguiente"}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer pb-0.5">
           <input
             type="checkbox"
             checked={paso.requiere_comentario}
             onChange={e => set("requiere_comentario", e.target.checked)}
-            style={{ width: 16, height: 16, accentColor: "var(--color-primary)" }}
+            className="w-4 h-4 rounded"
           />
-          <span style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
+          <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>
             Comentario obligatorio al aprobar
           </span>
         </label>
@@ -217,6 +239,7 @@ export function FlujoDiseñadorPage() {
             departamento_id: p.departamento_id ?? undefined,
             sla_horas: p.sla_horas ?? undefined,
             requiere_comentario: p.requiere_comentario,
+            tipo_accion: p.tipo_accion ?? "aprobar",
           })));
         })
         .catch(() => setError("No se pudo cargar el flujo."))
@@ -271,68 +294,71 @@ export function FlujoDiseñadorPage() {
 
   return (
     <AdminLayout>
-      <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 680 }}>
+      <form onSubmit={handleSave} className="flex flex-col gap-6 max-w-2xl">
 
-        {/* Back link */}
+        {/* Back */}
         <button
           type="button"
           onClick={() => navigate("/admin/configuracion/aprobaciones")}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            background: "none", border: "none", cursor: "pointer", padding: 0,
-            fontSize: 13, color: "var(--color-text-secondary)",
-            alignSelf: "flex-start",
-          }}
+          className="flex items-center gap-1.5 text-sm self-start hover:opacity-70 transition-opacity"
+          style={{ color: "var(--color-content-secondary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
         >
           <ArrowLeft size={14} /> Flujos de aprobación
         </button>
 
-        {/* Header */}
+        {/* Title */}
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--color-text-primary)" }}>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--color-content-primary)" }}>
             {isEditing ? "Editar flujo" : "Configurar flujo"}
           </h1>
           {tipoNombre && (
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
-              Tipo de licencia: <strong>{tipoNombre}</strong>
+            <p className="text-sm mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
+              Tipo de licencia: <strong style={{ color: "var(--color-content-primary)" }}>{tipoNombre}</strong>
             </p>
           )}
         </div>
 
-        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+        {error && <ErrorBanner message={error} />}
 
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>
-            Cargando…
+          <div className="flex justify-center py-16">
+            <Spinner size={28} />
           </div>
         ) : (
           <>
-            {/* Nombre y descripción */}
-            <div style={{
-              background: "var(--color-bg-card)", border: "1px solid var(--color-border)",
-              borderRadius: 14, padding: 20, display: "flex", flexDirection: "column", gap: 16,
-            }}>
-              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.7px", textTransform: "uppercase", color: "var(--color-text-disabled)" }}>
+            {/* Info del flujo */}
+            <div
+              className="rounded-xl border p-5 flex flex-col gap-4"
+              style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}
+            >
+              <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--color-content-disabled)" }}>
                 Información del flujo
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>Nombre</label>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+                  Nombre
+                </label>
                 <input
                   required
                   value={nombre}
                   onChange={e => setNombre(e.target.value)}
                   placeholder="Ej: Jefe de Área + Médico + RRHH"
                   maxLength={100}
+                  className={inputClass}
                   style={inputStyle}
                 />
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>Descripción (opcional)</label>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+                  Descripción{" "}
+                  <span className="text-xs font-normal" style={{ color: "var(--color-content-secondary)" }}>(opcional)</span>
+                </label>
                 <textarea
                   value={descripcion}
                   onChange={e => setDescripcion(e.target.value)}
                   placeholder="Descripción del flujo…"
                   rows={2}
+                  className={inputClass}
                   style={{ ...inputStyle, resize: "vertical" }}
                 />
               </div>
@@ -350,46 +376,47 @@ export function FlujoDiseñadorPage() {
                   onRemove={() => removePaso(i)}
                 />
                 {i < pasos.length - 1 && (
-                  <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
-                    <ChevronDown size={18} style={{ color: "var(--color-text-disabled)" }} />
+                  <div className="flex justify-center py-2">
+                    <ChevronDown size={18} style={{ color: "var(--color-content-disabled)" }} />
                   </div>
                 )}
               </div>
             ))}
 
+            {/* Agregar paso */}
             {pasos.length < 5 && (
               <button
                 type="button"
                 onClick={addPaso}
+                className="flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm transition-colors"
                 style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  padding: "12px 0", borderRadius: 10,
-                  border: "2px dashed var(--color-border)",
-                  background: "var(--color-bg-subtle)",
-                  cursor: "pointer", fontSize: 13, color: "var(--color-text-secondary)",
+                  borderColor: "var(--color-surface-border)",
+                  color: "var(--color-content-secondary)",
+                  background: "var(--color-surface-app)",
                 }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--color-primary)"; e.currentTarget.style.color = "var(--color-primary)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--color-surface-border)"; e.currentTarget.style.color = "var(--color-content-secondary)"; }}
               >
                 <Plus size={15} /> Agregar paso
               </button>
             )}
 
-            {/* Warning */}
+            {/* Warning edición */}
             {isEditing && (
-              <div style={{
-                display: "flex", alignItems: "flex-start", gap: 10,
-                padding: "12px 14px", borderRadius: 10,
-                background: "#fefce8", border: "1px solid #fde68a",
-              }}>
-                <AlertTriangle size={15} style={{ color: "#ca8a04", flexShrink: 0, marginTop: 1 }} />
-                <p style={{ margin: 0, fontSize: 12, color: "#92400e", lineHeight: 1.5 }}>
+              <div
+                className="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm"
+                style={{ background: "#fefce8", borderColor: "#fde68a" }}
+              >
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: "#ca8a04" }} />
+                <p style={{ color: "#92400e", lineHeight: 1.5 }}>
                   Los cambios en el flujo no afectarán solicitudes en curso.
                   Solo se aplicarán a nuevas solicitudes.
                 </p>
               </div>
             )}
 
-            {/* Actions */}
-            <div style={{ display: "flex", gap: 12 }}>
+            {/* Acciones */}
+            <div className="flex gap-3">
               <Button type="submit" disabled={saving}>
                 {saving ? "Guardando…" : "Guardar flujo"}
               </Button>

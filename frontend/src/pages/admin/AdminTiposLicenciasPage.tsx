@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Plus, X, Pencil } from "lucide-react";
+import { FileText, Plus, X, Pencil, Trash2 } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
@@ -42,7 +42,7 @@ interface ModalProps {
 }
 
 function TipoLicenciaModal({ editing, saving, onClose, onSave }: ModalProps) {
-  const isGlobal = editing && !editing.tenant_id;
+  const isGlobal = !!(editing && !editing.tenant_id);
   const [form, setForm] = useState<FormState>(
     editing
       ? {
@@ -158,19 +158,6 @@ function TipoLicenciaModal({ editing, saving, onClose, onSave }: ModalProps) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                disabled={isGlobal}
-                checked={form.requiere_certificado}
-                onChange={(e) => setForm((f) => ({ ...f, requiere_certificado: e.target.checked }))}
-                className="w-4 h-4 rounded"
-                style={{ accentColor: "var(--color-primary)" }}
-              />
-              <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>
-                Requiere certificado médico
-              </span>
-            </label>
             {editing && !isGlobal && (
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -208,6 +195,7 @@ export function AdminTiposLicenciasPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<TipoLicencia | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -215,8 +203,9 @@ export function AdminTiposLicenciasPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await licenciasService.listTipos();
-      setTipos(res.data ?? res as unknown as TipoLicencia[]);
+      const all = await licenciasService.listTipos();
+      // Solo mostrar tipos administrativos — los médicos (es_medica=true) se gestionan aparte
+      setTipos(all.filter((t: TipoLicencia) => !t.es_medica));
     } catch {
       setError("No se pudieron cargar los tipos de licencia.");
     } finally {
@@ -256,6 +245,21 @@ export function AdminTiposLicenciasPage() {
     }
   };
 
+  const handleDelete = async (tipo: TipoLicencia) => {
+    if (!confirm(`¿Eliminar el tipo de licencia "${tipo.nombre}"? Esta acción no se puede deshacer.`)) return;
+    setDeleting(tipo.id);
+    setError(null);
+    try {
+      await licenciasService.deleteTipo(tipo.id);
+      await load();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "No se pudo eliminar el tipo de licencia.";
+      setError(msg);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   const openEdit = (tipo: TipoLicencia) => { setEditing(tipo); setShowModal(true); };
   const openNew = () => { setEditing(null); setShowModal(true); };
 
@@ -277,7 +281,7 @@ export function AdminTiposLicenciasPage() {
           </Button>
         </div>
 
-        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+        {error && <ErrorBanner message={error} onRetry={load} />}
 
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--color-content-secondary)", fontSize: 13 }}>
@@ -285,7 +289,7 @@ export function AdminTiposLicenciasPage() {
           </div>
         ) : tipos.length === 0 ? (
           <EmptyState
-            icon={<FileText size={40} />}
+            icon={FileText}
             title="Sin tipos de licencia"
             description="Creá el primer tipo de licencia para que los colaboradores puedan solicitarlas."
           />
@@ -358,13 +362,25 @@ export function AdminTiposLicenciasPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => openEdit(tipo)}
-                        className="p-1.5 rounded-lg hover:bg-[--color-surface-app] transition-colors"
-                        aria-label="Editar"
-                      >
-                        <Pencil size={14} style={{ color: "var(--color-content-secondary)" }} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(tipo)}
+                          className="p-1.5 rounded-lg hover:bg-[--color-surface-app] transition-colors"
+                          aria-label="Editar"
+                        >
+                          <Pencil size={14} style={{ color: "var(--color-content-secondary)" }} />
+                        </button>
+                        {tipo.tenant_id && (
+                          <button
+                            onClick={() => handleDelete(tipo)}
+                            disabled={deleting === tipo.id}
+                            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-40"
+                            aria-label="Eliminar"
+                          >
+                            <Trash2 size={14} style={{ color: deleting === tipo.id ? "var(--color-content-disabled)" : "#ef4444" }} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

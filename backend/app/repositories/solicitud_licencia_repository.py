@@ -6,7 +6,7 @@ from supabase._async.client import AsyncClient
 
 _SELECT_FULL = (
     "*, "
-    "tipos_licencia(id, codigo, nombre), "
+    "tipos_licencia(id, codigo, nombre, es_medica), "
     "documentos_solicitud(*)"
 )
 
@@ -27,24 +27,27 @@ class SolicitudLicenciaRepository:
             "comentario_empleado": data.get("comentario_empleado"),
             "canal": data.get("canal", "portal"),
         }
+        for field in ("medico_nombre", "medico_apellido", "medico_matricula", "dias_reposo",
+                      "flujo_id", "paso_actual"):
+            if data.get(field) is not None:
+                payload[field] = data[field]
         res = await (
             self._db.table("solicitudes_licencia")
             .insert(payload)
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0] if res.data else res.data
 
     async def get(self, solicitud_id: str | UUID) -> dict | None:
         res = await (
             self._db.table("solicitudes_licencia")
             .select(_SELECT_FULL)
             .eq("id", str(solicitud_id))
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        return res.data
+        return res.data[0] if res.data else None
 
     async def list_all(
         self,
@@ -53,6 +56,7 @@ class SolicitudLicenciaRepository:
         estado: str | None = None,
         tipo_licencia_id: str | None = None,
         user_id: str | None = None,
+        es_medica: bool | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict], int]:
@@ -67,6 +71,8 @@ class SolicitudLicenciaRepository:
             query = query.eq("tipo_licencia_id", tipo_licencia_id)
         if user_id:
             query = query.eq("user_id", user_id)
+        if es_medica is not None:
+            query = query.eq("tipos_licencia.es_medica", es_medica)
 
         offset = (page - 1) * page_size
         query = query.range(offset, offset + page_size - 1).order("created_at", desc=True)
@@ -139,10 +145,9 @@ class SolicitudLicenciaRepository:
             .update(payload)
             .eq("id", str(solicitud_id))
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0] if res.data else None
 
     async def update(self, data: dict) -> dict | None:
         """Generic update by id. data must include 'id'."""
@@ -152,10 +157,9 @@ class SolicitudLicenciaRepository:
             .update(data)
             .eq("id", str(solicitud_id))
             .select(_SELECT_FULL)
-            .single()
             .execute()
         )
-        return res.data
+        return res.data[0] if res.data else None
 
     async def list_for_calendar(
         self,

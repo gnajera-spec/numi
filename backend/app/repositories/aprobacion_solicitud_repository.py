@@ -37,10 +37,10 @@ class AprobacionSolicitudRepository:
             .select("*")
             .eq("solicitud_id", solicitud_id)
             .eq("orden", orden)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        return response.data
+        return response.data[0] if response.data else None
 
     async def update_paso(self, aprobacion_id: str, data: dict) -> dict | None:
         response = (
@@ -48,10 +48,10 @@ class AprobacionSolicitudRepository:
             .update(data)
             .eq("id", aprobacion_id)
             .select()
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        return response.data
+        return response.data[0] if response.data else None
 
     async def mark_remaining_omitido(self, solicitud_id: str, desde_orden: int) -> None:
         """Mark all steps after 'desde_orden' as omitido (when rejected or cancelled)."""
@@ -71,18 +71,20 @@ class AprobacionSolicitudRepository:
         page: int,
         page_size: int,
     ) -> tuple[list[dict], int]:
-        """Solicitudes in pendiente where current step matches this role."""
+        """Solicitudes in pendiente where current step matches this role.
+        Excludes 'solo_ver' steps — those are notification-only and auto-advance."""
         offset = (page - 1) * page_size
         response = (
             await self._db.table("aprobaciones_solicitud")
             .select(
-                "solicitud_id, solicitudes_licencia!inner(*, tipos_licencia(nombre, codigo), users!user_id(nombre, apellido))",
+                "solicitud_id, tipo_accion, solicitudes_licencia!inner(*, tipos_licencia(nombre, codigo, es_medica), users!user_id(first_name, last_name))",
                 count="exact",
             )
             .eq("tenant_id", tenant_id)
             .eq("tipo_aprobador", "rol")
             .eq("rol_aprobador", rol)
             .eq("estado", "pendiente")
+            .neq("tipo_accion", "solo_ver")
             .range(offset, offset + page_size - 1)
             .execute()
         )

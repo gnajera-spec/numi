@@ -1,40 +1,34 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { GitBranch, Plus, Edit2, ToggleLeft, CheckCircle, AlertCircle } from "lucide-react";
+import { GitBranch, Plus, Edit2, ToggleLeft, CheckCircle, AlertCircle, Info } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
+import { EmptyState } from "../../components/EmptyState";
+import { Spinner } from "../../components/Spinner";
 import { flujoAprobacionService } from "../../services/flujoAprobacionService";
 import type { TipoLicenciaConFlujo } from "../../services/flujoAprobacionService";
 
 function StatusBadge({ flujo }: { flujo: TipoLicenciaConFlujo }) {
-  if (flujo.flujo_id === null) {
+  if (!flujo.flujo_id) {
     return (
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: 4,
-        fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-        background: "var(--color-bg-subtle)", color: "var(--color-text-secondary)",
-      }}>Default</span>
+      <span className="badge badge-neutral">
+        Default
+      </span>
     );
   }
   if (flujo.is_active) {
     return (
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: 4,
-        fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-        background: "#f0fdf4", color: "#16a34a",
-      }}>
-        <CheckCircle size={10} /> Activo
+      <span className="badge badge-activo">
+        <CheckCircle size={10} />
+        Activo
       </span>
     );
   }
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-      background: "#fefce8", color: "#ca8a04",
-    }}>
-      <AlertCircle size={10} /> Inactivo
+    <span className="badge badge-pendiente">
+      <AlertCircle size={10} />
+      Inactivo
     </span>
   );
 }
@@ -75,80 +69,99 @@ export function AdminAprobacionesConfigPage() {
 
   return (
     <AdminLayout>
-      <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 860 }}>
+      <div className="flex flex-col gap-6">
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--color-text-primary)" }}>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--color-content-primary)" }}>
               Flujos de aprobación
             </h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
-              Define cómo se aprueban las solicitudes de licencia en tu empresa.
+            <p className="text-sm mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
+              Definí cómo se aprueban las solicitudes de licencia en tu empresa.
             </p>
           </div>
         </div>
 
-        {error && <ErrorBanner message={error} onClose={() => setError(null)} />}
+        {error && <ErrorBanner message={error} />}
 
-        <p style={{
-          margin: 0, fontSize: 12, color: "var(--color-text-disabled)",
-          padding: "10px 14px", borderRadius: 10,
-          background: "var(--color-bg-subtle)", border: "1px solid var(--color-border)",
-        }}>
-          <strong>Default</strong> = usa el aprobador configurado en políticas de licencia.
-          Los cambios en el flujo no afectan solicitudes en curso.
-        </p>
+        {/* Info box */}
+        <div
+          className="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm"
+          style={{
+            background: "var(--color-primary-xlight)",
+            borderColor: "var(--color-primary-light)",
+            color: "var(--color-primary)",
+          }}
+        >
+          <Info size={15} className="mt-0.5 shrink-0" />
+          <p style={{ color: "var(--color-text-secondary)" }}>
+            <strong style={{ color: "var(--color-text-primary)" }}>Default</strong> = usa el aprobador configurado en políticas de licencia.
+            Los cambios en un flujo no afectan solicitudes en curso.
+          </p>
+        </div>
 
-        <div style={{
-          background: "var(--color-bg-card)", border: "1px solid var(--color-border)",
-          borderRadius: 14, overflow: "hidden",
-        }}>
-          {loading ? (
-            <div style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>
-              Cargando…
-            </div>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        {/* Table */}
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <Spinner size={28} />
+          </div>
+        ) : (items ?? []).length === 0 ? (
+          <EmptyState
+            icon={GitBranch}
+            title="Sin tipos de licencia"
+            description="No hay tipos de licencia configurados en tu empresa."
+          />
+        ) : (
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-card)" }}
+          >
+            <table className="w-full text-sm">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--color-border)", background: "var(--color-bg-subtle)" }}>
-                  {["Tipo de licencia", "Flujo configurado", "Pasos", "Estado", "Acciones"].map(h => (
-                    <th key={h} style={{
-                      padding: "10px 16px", textAlign: "left",
-                      fontSize: 11, fontWeight: 700, letterSpacing: "0.5px",
-                      textTransform: "uppercase", color: "var(--color-text-disabled)",
-                    }}>{h}</th>
-                  ))}
+                <tr
+                  className="text-left text-xs font-semibold uppercase tracking-wide"
+                  style={{
+                    borderBottom: "1px solid var(--color-surface-border)",
+                    color: "var(--color-content-secondary)",
+                    background: "var(--color-surface-app)",
+                  }}
+                >
+                  <th className="px-4 py-3">Tipo de licencia</th>
+                  <th className="px-4 py-3">Flujo configurado</th>
+                  <th className="px-4 py-3 text-center">Pasos</th>
+                  <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody>
-                {items.map((item, i) => (
-                  <tr key={item.tipo_licencia_id} style={{
-                    borderBottom: i < items.length - 1 ? "1px solid var(--color-border)" : "none",
-                  }}>
-                    <td style={{ padding: "12px 16px" }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>
+              <tbody className="divide-y" style={{ borderColor: "var(--color-surface-border)" }}>
+                {(items ?? []).map((item) => (
+                  <tr
+                    key={item.tipo_licencia_id}
+                    className="transition-colors"
+                    style={{ ["--hover-bg" as string]: "var(--color-surface-app)" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "var(--color-surface-app)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "")}
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-medium" style={{ color: "var(--color-content-primary)" }}>
                         {item.tipo_licencia_nombre}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
+                      </p>
+                      <p className="text-xs mt-0.5 font-mono" style={{ color: "var(--color-content-secondary)" }}>
                         {item.tipo_licencia_codigo}
-                      </div>
+                      </p>
                     </td>
-                    <td style={{ padding: "12px 16px" }}>
-                      {item.flujo_nombre
-                        ? <span style={{ fontSize: 13, color: "var(--color-text-primary)" }}>{item.flujo_nombre}</span>
-                        : <span style={{ fontSize: 13, color: "var(--color-text-disabled)" }}>—</span>
-                      }
+                    <td className="px-4 py-3" style={{ color: item.flujo_nombre ? "var(--color-content-primary)" : "var(--color-content-disabled)" }}>
+                      {item.flujo_nombre ?? "—"}
                     </td>
-                    <td style={{ padding: "12px 16px" }}>
-                      <span style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
-                        {item.flujo_id ? item.pasos_count : "—"}
-                      </span>
+                    <td className="px-4 py-3 text-center" style={{ color: "var(--color-content-primary)" }}>
+                      {item.flujo_id ? item.pasos_count : "—"}
                     </td>
-                    <td style={{ padding: "12px 16px" }}>
+                    <td className="px-4 py-3">
                       <StatusBadge flujo={item} />
                     </td>
-                    <td style={{ padding: "12px 16px" }}>
-                      <div style={{ display: "flex", gap: 8 }}>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
                         {!item.flujo_id || !item.is_active ? (
                           <Button
                             variant="secondary"
@@ -156,8 +169,8 @@ export function AdminAprobacionesConfigPage() {
                               `/admin/configuracion/aprobaciones/nuevo?tipo=${item.tipo_licencia_id}&nombre=${encodeURIComponent(item.tipo_licencia_nombre)}`
                             )}
                           >
-                            <Plus size={13} style={{ marginRight: 4 }} />
-                            {item.flujo_id ? "Nuevo flujo" : "Configurar flujo"}
+                            <Plus size={13} className="mr-1" />
+                            {item.flujo_id ? "Nuevo flujo" : "Configurar"}
                           </Button>
                         ) : (
                           <>
@@ -165,7 +178,7 @@ export function AdminAprobacionesConfigPage() {
                               variant="secondary"
                               onClick={() => navigate(`/admin/configuracion/aprobaciones/${item.flujo_id}`)}
                             >
-                              <Edit2 size={13} style={{ marginRight: 4 }} />
+                              <Edit2 size={13} className="mr-1" />
                               Editar
                             </Button>
                             <Button
@@ -173,7 +186,7 @@ export function AdminAprobacionesConfigPage() {
                               disabled={deactivating === item.flujo_id}
                               onClick={() => handleDeactivate(item.flujo_id!)}
                             >
-                              <ToggleLeft size={13} style={{ marginRight: 4 }} />
+                              <ToggleLeft size={13} className="mr-1" />
                               {deactivating === item.flujo_id ? "Desactivando…" : "Desactivar"}
                             </Button>
                           </>
@@ -182,18 +195,10 @@ export function AdminAprobacionesConfigPage() {
                     </td>
                   </tr>
                 ))}
-                {items.length === 0 && (
-                  <tr>
-                    <td colSpan={5} style={{ padding: 40, textAlign: "center", color: "var(--color-text-secondary)", fontSize: 13 }}>
-                      <GitBranch size={32} style={{ margin: "0 auto 8px", display: "block", opacity: 0.3 }} />
-                      No hay tipos de licencia configurados.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );

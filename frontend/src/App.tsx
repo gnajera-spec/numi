@@ -22,15 +22,50 @@ import { AdminOrganizacionPage } from "./pages/admin/AdminOrganizacionPage";
 import { AdminMedicoFichasPage } from "./pages/admin/AdminMedicoFichasPage";
 import { AdminMedicoAccidentesPage } from "./pages/admin/AdminMedicoAccidentesPage";
 import { AdminMedicoReportesPage } from "./pages/admin/AdminMedicoReportesPage";
+import { MedicoLicenciasPage } from "./pages/employee/medico/MedicoLicenciasPage";
+import { MedicoFichasPage } from "./pages/employee/medico/MedicoFichasPage";
+import { MedicoAccidentesPage } from "./pages/employee/medico/MedicoAccidentesPage";
+import { MedicoReportesPage } from "./pages/employee/medico/MedicoReportesPage";
 import { AdminTiposLicenciasPage } from "./pages/admin/AdminTiposLicenciasPage";
 import { AdminSmtpConfigPage } from "./pages/admin/AdminSmtpConfigPage";
 import { AdminAprobacionesConfigPage } from "./pages/admin/AdminAprobacionesConfigPage";
 import { FlujoDiseñadorPage } from "./pages/admin/FlujoDiseñadorPage";
 import { AdminConfiguracionPage } from "./pages/admin/AdminConfiguracionPage";
 import { AdminCalendarioPage } from "./pages/admin/AdminCalendarioPage";
+import { SuperAdminLoginPage } from "./pages/superadmin/SuperAdminLoginPage";
+import { SuperAdminTenantsPage } from "./pages/superadmin/SuperAdminTenantsPage";
+import { SuperAdminSmtpPage } from "./pages/superadmin/SuperAdminSmtpPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { useAuth } from "./contexts/AuthContext";
 
-const ADMIN_ROLES = ["rrhh", "admin_empresa", "super_admin", "servicio_medico"];
+const ADMIN_ROLES = ["rrhh", "admin_empresa", "servicio_medico"];
+
+function SuperAdminProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, user } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen" style={{ background: "var(--color-surface-app)" }}>
+        <Spinner />
+      </div>
+    );
+  }
+  if (!isAuthenticated || user?.role !== "super_admin") {
+    return <Navigate to="/superadmin/login" replace />;
+  }
+  return <>{children}</>;
+}
+
+function SuperAdminApp() {
+  return (
+    <SuperAdminProtectedRoute>
+      <Routes>
+        <Route path="tenants" element={<SuperAdminTenantsPage />} />
+        <Route path="smtp" element={<SuperAdminSmtpPage />} />
+        <Route path="*" element={<Navigate to="tenants" replace />} />
+      </Routes>
+    </SuperAdminProtectedRoute>
+  );
+}
 
 function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -45,6 +80,35 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/admin/login" replace />;
   }
   return <>{children}</>;
+}
+
+function MedicoProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, user } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen" style={{ background: "var(--color-surface-app)" }}>
+        <Spinner />
+      </div>
+    );
+  }
+  if (!isAuthenticated) return <Navigate to="/employee/login" replace />;
+  const roles = user?.roles?.length ? user.roles : [user?.role ?? ""];
+  if (!roles.includes("servicio_medico")) return <Navigate to="/employee/dashboard" replace />;
+  return <>{children}</>;
+}
+
+function MedicoApp() {
+  return (
+    <MedicoProtectedRoute>
+      <Routes>
+        <Route path="licencias" element={<MedicoLicenciasPage />} />
+        <Route path="fichas" element={<MedicoFichasPage />} />
+        <Route path="accidentes" element={<MedicoAccidentesPage />} />
+        <Route path="reportes" element={<MedicoReportesPage />} />
+        <Route path="*" element={<Navigate to="licencias" replace />} />
+      </Routes>
+    </MedicoProtectedRoute>
+  );
 }
 
 function EmployeeApp() {
@@ -67,7 +131,10 @@ function EmployeeApp() {
 
 function AdminAppInner() {
   const { user } = useAuth();
-  const defaultRoute = user?.role === "servicio_medico" ? "medico/fichas" : "dashboard";
+  const defaultRoute =
+    user?.role === "servicio_medico" ? "medico/fichas" :
+    user?.role === "admin_empresa"   ? "usuarios" :
+    "dashboard";
   return (
     <Routes>
       <Route path="dashboard" element={<AdminDashboardPage />} />
@@ -107,9 +174,13 @@ export default function App() {
         <Routes>
           <Route path="/employee/login" element={<LoginPage />} />
           <Route path="/employee/activate" element={<ActivatePage />} />
+          <Route path="/employee/medico/*" element={<MedicoApp />} />
           <Route path="/employee/*" element={<EmployeeApp />} />
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin/*" element={<AdminApp />} />
+          <Route path="/superadmin/login" element={<SuperAdminLoginPage />} />
+          <Route path="/superadmin/*" element={<SuperAdminApp />} />
+          <Route path="/onboarding/:token" element={<OnboardingPage />} />
           <Route path="*" element={<Navigate to="/employee/login" replace />} />
         </Routes>
       </AuthProvider>
