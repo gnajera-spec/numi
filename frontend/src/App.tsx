@@ -19,9 +19,6 @@ import { AdminComunicacionesPage } from "./pages/admin/AdminComunicacionesPage";
 import { AdminRecibosPage } from "./pages/admin/AdminRecibosPage";
 import { AdminUsuariosPage } from "./pages/admin/AdminUsuariosPage";
 import { AdminOrganizacionPage } from "./pages/admin/AdminOrganizacionPage";
-import { AdminMedicoFichasPage } from "./pages/admin/AdminMedicoFichasPage";
-import { AdminMedicoAccidentesPage } from "./pages/admin/AdminMedicoAccidentesPage";
-import { AdminMedicoReportesPage } from "./pages/admin/AdminMedicoReportesPage";
 import { MedicoLicenciasPage } from "./pages/employee/medico/MedicoLicenciasPage";
 import { MedicoFichasPage } from "./pages/employee/medico/MedicoFichasPage";
 import { MedicoAccidentesPage } from "./pages/employee/medico/MedicoAccidentesPage";
@@ -132,9 +129,7 @@ function EmployeeApp() {
 function AdminAppInner() {
   const { user } = useAuth();
   const defaultRoute =
-    user?.role === "servicio_medico" ? "medico/fichas" :
-    user?.role === "admin_empresa"   ? "usuarios" :
-    "dashboard";
+    user?.role === "admin_empresa" ? "usuarios" : "dashboard";
   return (
     <Routes>
       <Route path="dashboard" element={<AdminDashboardPage />} />
@@ -143,9 +138,6 @@ function AdminAppInner() {
       <Route path="recibos" element={<AdminRecibosPage />} />
       <Route path="usuarios" element={<AdminUsuariosPage />} />
       <Route path="organizacion" element={<AdminOrganizacionPage />} />
-      <Route path="medico/fichas" element={<AdminMedicoFichasPage />} />
-      <Route path="medico/accidentes" element={<AdminMedicoAccidentesPage />} />
-      <Route path="medico/reportes" element={<AdminMedicoReportesPage />} />
       <Route path="reports" element={<AdminReportsPage />} />
       <Route path="configuracion" element={<AdminConfiguracionPage />} />
       <Route path="tipos-licencias" element={<AdminTiposLicenciasPage />} />

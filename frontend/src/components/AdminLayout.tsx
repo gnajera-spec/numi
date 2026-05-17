@@ -1,8 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, BarChart2, LogOut, Users, Calendar, CalendarDays,
-  MessageSquare, FileText, Building2, Stethoscope, AlertTriangle,
-  Activity, Settings, ChevronUp, Check, Menu, X, UserCircle2, Briefcase,
+  MessageSquare, FileText, Building2, Stethoscope,
+  Settings, ChevronUp, Check, Menu, X, UserCircle2, Briefcase,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,13 +23,6 @@ const rrhhNavItems = [
 
 const adminEmpresaNavItems = [
   { to: '/admin/usuarios',     label: 'Usuarios',     icon: Users },
-  { to: '/admin/organizacion', label: 'Organización', icon: Building2 },
-];
-
-const medicoNavItems = [
-  { to: '/admin/medico/fichas',    label: 'Fichas médicas',   icon: Stethoscope },
-  { to: '/admin/medico/accidentes', label: 'Accidentes',      icon: AlertTriangle },
-  { to: '/admin/medico/reportes',  label: 'Reportes médicos', icon: Activity },
 ];
 
 const CONFIG_ROLES = ['admin_empresa', 'super_admin'];
@@ -44,7 +37,7 @@ const PORTAL_MAP: Record<string, PortalConfig> = {
   rrhh:            { label: 'Portal RRHH',        sublabel: 'Recursos Humanos',         icon: Briefcase,    color: '#226080', path: '/admin/dashboard'       },
   super_admin:     { label: 'Portal RRHH',        sublabel: 'Super Administrador',      icon: Briefcase,    color: '#226080', path: '/admin/dashboard'       },
   admin_empresa:   { label: 'Admin Empresa',      sublabel: 'Administrador del tenant', icon: Building2,    color: '#75559b', path: '/admin/organizacion'    },
-  servicio_medico: { label: 'Portal Médico',      sublabel: 'Servicio Médico',          icon: Stethoscope,  color: '#1a7a45', path: '/admin/medico/fichas'   },
+  servicio_medico: { label: 'Portal Médico',      sublabel: 'Servicio Médico',          icon: Stethoscope,  color: '#1a7a45', path: '/employee/medico/licencias' },
 };
 
 function buildPortals(roles: string[], currentRole: string, puestoNombre?: string) {
@@ -320,8 +313,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   function getNavItems() {
     if (role === 'rrhh') return rrhhNavItems;
     if (role === 'admin_empresa') return adminEmpresaNavItems;
-    if (role === 'super_admin') return rrhhNavItems;
-    if (role === 'servicio_medico') return medicoNavItems;
     return [];
   }
 
@@ -352,18 +343,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <NavItem key={item.to} {...item} onClick={onClose} />
         ))}
 
-        {/* Ítem médico extra para super_admin */}
-        {role === 'super_admin' && (
-          <>
-            <div style={{
-              margin: '8px 6px',
-              borderTop: '1px solid var(--color-border)',
-            }} />
-            {medicoNavItems.map(item => (
-              <NavItem key={item.to} {...item} onClick={onClose} />
-            ))}
-          </>
-        )}
 
         {/* Configuración */}
         {CONFIG_ROLES.includes(role) && (
