@@ -118,6 +118,8 @@ class SolicitudLicenciaOut(BaseModel):
     # Flujo de aprobación
     flujo_id: str | None = None
     paso_actual: int | None = None
+    # Acción del usuario actual en el paso pendiente (None si no es su paso)
+    mi_tipo_accion: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -156,6 +158,7 @@ class SolicitudLicenciaOut(BaseModel):
             dias_reposo=row.get("dias_reposo"),
             flujo_id=str(row["flujo_id"]) if row.get("flujo_id") else None,
             paso_actual=row.get("paso_actual"),
+            mi_tipo_accion=row.get("_mi_tipo_accion"),
         )
 
 

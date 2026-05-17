@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Calendar, X, Filter, Check, ChevronRight, History } from "lucide-react";
+import { Calendar, X, Filter, Check, ChevronRight, History, Eye } from "lucide-react";
 import { MedicoLayout } from "../../../components/MedicoLayout";
 import { Button } from "../../../components/Button";
 import { Badge, estadoToVariant } from "../../../components/Badge";
@@ -7,6 +7,7 @@ import { EmptyState } from "../../../components/EmptyState";
 import { ErrorBanner } from "../../../components/ErrorBanner";
 import { Spinner } from "../../../components/Spinner";
 import { licenciasService } from "../../../services/licenciasService";
+import { adminLicenciasService, type AprobacionPaso } from "../../../services/adminLicenciasService";
 import type { SolicitudLicencia, EstadoSolicitud, Paginated } from "../../../types";
 
 const parseLocalDate = (s: string) => new Date(s + "T12:00:00");
@@ -20,6 +21,105 @@ const estadoBadge: Record<EstadoSolicitud, { label: string }> = {
   rechazada:   { label: "Rechazada" },
   cancelada:   { label: "Cancelada" },
 };
+
+// ── Historial Modal ───────────────────────────────────────────────────────────
+
+const pasoEstadoIcon: Record<AprobacionPaso["estado"], { icon: string; color: string }> = {
+  pendiente: { icon: "○", color: "var(--color-content-disabled)" },
+  aprobado:  { icon: "✓", color: "var(--color-state-present)" },
+  rechazado: { icon: "✗", color: "var(--color-state-absent)" },
+  omitido:   { icon: "—", color: "var(--color-content-disabled)" },
+};
+
+function HistorialModal({ solicitudId, onClose }: { solicitudId: string; onClose: () => void }) {
+  const [pasos, setPasos] = useState<AprobacionPaso[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    adminLicenciasService.getHistorial(solicitudId)
+      .then((res) => setPasos(res as unknown as AprobacionPaso[]))
+      .catch(() => setError("No se pudo cargar el historial."))
+      .finally(() => setLoading(false));
+  }, [solicitudId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.4)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-lg rounded-xl border p-6 flex flex-col gap-4"
+        style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold flex items-center gap-2" style={{ color: "var(--color-content-primary)" }}>
+            <History size={16} style={{ color: "var(--color-primary)" }} />
+            Estado del flujo de aprobación
+          </h2>
+          <button onClick={onClose} aria-label="Cerrar">
+            <X size={18} style={{ color: "var(--color-content-secondary)" }} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-8"><Spinner size={24} /></div>
+        ) : error ? (
+          <ErrorBanner message={error} />
+        ) : pasos.length === 0 ? (
+          <p className="text-sm text-center py-4" style={{ color: "var(--color-content-secondary)" }}>
+            Esta solicitud no tiene flujo de aprobación configurado.
+          </p>
+        ) : (
+          <ol className="flex flex-col gap-3">
+            {pasos.map((paso, idx) => {
+              const { icon, color } = pasoEstadoIcon[paso.estado];
+              return (
+                <li key={paso.id} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <span className="text-base font-bold w-6 text-center" style={{ color }}>{icon}</span>
+                    {idx < pasos.length - 1 && (
+                      <div className="flex-1 w-px mt-1" style={{ background: "var(--color-surface-border)", minHeight: 12 }} />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+                        Paso {paso.orden}: {paso.nombre_paso}
+                      </span>
+                      <span className="text-xs rounded-full px-2 py-0.5 font-medium capitalize"
+                        style={{
+                          background: paso.estado === "aprobado" ? "var(--color-state-present-bg, #f0fdf4)" : paso.estado === "rechazado" ? "#fef2f2" : "var(--color-surface-empty)",
+                          color,
+                        }}>
+                        {paso.estado}
+                      </span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
+                      {paso.tipo_aprobador === "rol" ? `Rol: ${paso.rol_aprobador ?? "—"}` : `Departamento: ${paso.departamento_nombre ?? "—"}`}
+                    </p>
+                    {paso.aprobado_por_nombre && (
+                      <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
+                        {paso.estado === "aprobado" ? "Aprobado" : "Rechazado"} por <strong>{paso.aprobado_por_nombre}</strong>
+                        {paso.fecha_decision && <> · {fmtDate(paso.fecha_decision)}</>}
+                      </p>
+                    )}
+                    {paso.comentario && (
+                      <p className="text-xs mt-1 italic" style={{ color: "var(--color-content-secondary)" }}>
+                        "{paso.comentario}"
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <Button variant="secondary" onClick={onClose}>Cerrar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Review Modal ─────────────────────────────────────────────────────────────
 
@@ -170,16 +270,18 @@ export function MedicoLicenciasPage() {
     solicitud: SolicitudLicencia;
     action: "aprobar" | "rechazar";
   } | null>(null);
+  const [historialId, setHistorialId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await licenciasService.listMedicas({
-        estado: filtroEstado || undefined,
-        page,
-        page_size: 20,
-      });
+      // pendientesAprobacion now includes solo_ver steps (mi_tipo_accion tells us the action)
+      const res = await licenciasService.pendientesAprobacion(page, 20);
+      // Filter by estado if selected
+      if (filtroEstado) {
+        res.data = res.data.filter(s => s.estado === filtroEstado);
+      }
       setData(res);
     } catch {
       setError("No se pudieron cargar las solicitudes médicas.");
@@ -303,7 +405,29 @@ export function MedicoLicenciasPage() {
 
                     {/* Acciones */}
                     <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                      {canReview && (
+                      {/* Botón historial siempre disponible si hay flujo */}
+                      {sol.flujo_id && (
+                        <button
+                          onClick={() => setHistorialId(sol.id)}
+                          className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                          style={{ color: "var(--color-content-secondary)", borderColor: "var(--color-surface-border)" }}
+                        >
+                          <History size={12} /> Historial
+                        </button>
+                      )}
+
+                      {/* Solo notificación — no puede aprobar ni rechazar */}
+                      {sol.mi_tipo_accion === "solo_ver" && (
+                        <span
+                          className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg"
+                          style={{ background: "var(--color-surface-empty)", color: "var(--color-content-secondary)" }}
+                        >
+                          <Eye size={12} /> Solo notificación
+                        </span>
+                      )}
+
+                      {/* Puede actuar — aprobar o rechazar */}
+                      {canReview && sol.mi_tipo_accion !== "solo_ver" && (
                         <>
                           <button
                             onClick={() => setModal({ solicitud: sol, action: "rechazar" })}
@@ -321,9 +445,9 @@ export function MedicoLicenciasPage() {
                           </button>
                         </>
                       )}
-                      {!canReview && (
+
+                      {!canReview && sol.mi_tipo_accion !== "solo_ver" && (
                         <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
-                          <History size={13} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
                           Procesada
                         </span>
                       )}
@@ -359,6 +483,13 @@ export function MedicoLicenciasPage() {
           action={modal.action}
           onClose={() => setModal(null)}
           onDone={() => { setModal(null); load(); }}
+        />
+      )}
+
+      {historialId && (
+        <HistorialModal
+          solicitudId={historialId}
+          onClose={() => setHistorialId(null)}
         />
       )}
     </MedicoLayout>

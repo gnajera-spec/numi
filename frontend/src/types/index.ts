@@ -98,6 +98,8 @@ export interface SolicitudLicencia {
   // Solicitante
   user_nombre?: string;
   user_cuil?: string;
+  // Acción del usuario autenticado en el paso actual (solo en pendientes-mi-aprobacion)
+  mi_tipo_accion?: "aprobar" | "solo_ver" | "derivar";
   // Medical fields
   medico_nombre?: string;
   medico_apellido?: string;

@@ -48,7 +48,6 @@ class AprobacionSolicitudRepository:
             .update(data)
             .eq("id", aprobacion_id)
             .select()
-            .limit(1)
             .execute()
         )
         return response.data[0] if response.data else None
@@ -72,23 +71,27 @@ class AprobacionSolicitudRepository:
         page_size: int,
     ) -> tuple[list[dict], int]:
         """Solicitudes in pendiente where current step matches this role.
-        Excludes 'solo_ver' steps — those are notification-only and auto-advance."""
+        Includes 'solo_ver' steps so the assignee is notified; mi_tipo_accion
+        is injected into each solicitud dict so the service can surface it."""
         offset = (page - 1) * page_size
         response = (
             await self._db.table("aprobaciones_solicitud")
             .select(
-                "solicitud_id, tipo_accion, solicitudes_licencia!inner(*, tipos_licencia(nombre, codigo, es_medica), users!user_id(first_name, last_name))",
+                "solicitud_id, tipo_accion, solicitudes_licencia!inner(*, tipos_licencia(nombre, codigo, es_medica), users!solicitudes_licencia_user_id_fkey(first_name, last_name, cuil))",
                 count="exact",
             )
             .eq("tenant_id", tenant_id)
             .eq("tipo_aprobador", "rol")
             .eq("rol_aprobador", rol)
             .eq("estado", "pendiente")
-            .neq("tipo_accion", "solo_ver")
             .range(offset, offset + page_size - 1)
             .execute()
         )
-        items = [row["solicitudes_licencia"] for row in (response.data or [])]
+        items = []
+        for row in (response.data or []):
+            sol = dict(row["solicitudes_licencia"])
+            sol["_mi_tipo_accion"] = row.get("tipo_accion", "aprobar")
+            items.append(sol)
         return items, response.count or 0
 
     async def get_pendientes_para_departamento(
@@ -104,7 +107,7 @@ class AprobacionSolicitudRepository:
         response = (
             await self._db.table("aprobaciones_solicitud")
             .select(
-                "solicitud_id, solicitudes_licencia!inner(*, tipos_licencia(nombre, codigo), users!user_id(nombre, apellido))",
+                "solicitud_id, tipo_accion, solicitudes_licencia!inner(*, tipos_licencia(nombre, codigo), users!solicitudes_licencia_user_id_fkey(first_name, last_name, cuil))",
                 count="exact",
             )
             .eq("tenant_id", tenant_id)
@@ -115,5 +118,9 @@ class AprobacionSolicitudRepository:
             .range(offset, offset + page_size - 1)
             .execute()
         )
-        items = [row["solicitudes_licencia"] for row in (response.data or [])]
+        items = []
+        for row in (response.data or []):
+            sol = dict(row["solicitudes_licencia"])
+            sol["_mi_tipo_accion"] = row.get("tipo_accion", "aprobar")
+            items.append(sol)
         return items, response.count or 0
