@@ -2,6 +2,7 @@
 Comunicacion service: draft creation, segmentation resolution,
 WhatsApp dispatch, adjuntos upload, and colaborador-side confirmation.
 """
+import asyncio
 import logging
 import math
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from app.schemas.comunicaciones import (
     ReenviarResponse,
 )
 from app.services.meta_api import MetaApiClient
+from app.services.smtp_service import SmtpService
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,7 @@ class ComunicacionService:
         adjuntos: ComunicacionAdjuntoRepository,
         users: UserRepository,
         wa_config: WhatsappConfigRepository,
+        smtp_service: SmtpService | None = None,
     ) -> None:
         self._db = db
         self._comunicaciones = comunicaciones
@@ -54,6 +57,7 @@ class ComunicacionService:
         self._adjuntos = adjuntos
         self._users = users
         self._wa_config = wa_config
+        self._smtp = smtp_service
 
     # ── RRHH: crear borrador ──────────────────────────────────────────────────
 
@@ -181,6 +185,7 @@ class ComunicacionService:
         await self._comunicaciones.set_enviado(comunicacion_id, tenant_id, len(user_ids))
 
         await self._dispatch_wa_best_effort(tenant_id, comunicacion_id, com, user_ids)
+        asyncio.create_task(self._dispatch_email_best_effort(tenant_id, com, user_ids))
 
         await self._comunicaciones.mark_enviado_completo(comunicacion_id, tenant_id)
 
@@ -188,15 +193,29 @@ class ComunicacionService:
 
     # ── RRHH: reenviar a sin confirmación ─────────────────────────────────────
 
-    async def reenviar(self, tenant_id: str, comunicacion_id: str) -> ReenviarResponse:
+    async def reenviar(
+        self, tenant_id: str, comunicacion_id: str, user_ids: list[str] | None = None
+    ) -> ReenviarResponse:
         com = await self._comunicaciones.get(comunicacion_id, tenant_id)
         if not com:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Comunicación no encontrada")
 
         pendientes = await self._destinatarios.list_sin_confirmacion(comunicacion_id)
-        user_ids = [str(p["user_id"]) for p in pendientes]
-        await self._dispatch_wa_best_effort(tenant_id, comunicacion_id, com, user_ids)
-        return ReenviarResponse(reenviados=len(user_ids))
+        target_ids = [str(p["user_id"]) for p in pendientes]
+        if user_ids:
+            target_ids = [uid for uid in target_ids if uid in user_ids]
+        await self._dispatch_wa_best_effort(tenant_id, comunicacion_id, com, target_ids)
+        asyncio.create_task(self._dispatch_email_best_effort(tenant_id, com, target_ids))
+        return ReenviarResponse(reenviados=len(target_ids))
+
+    async def recordatorio_email(
+        self, tenant_id: str, comunicacion_id: str, user_ids: list[str]
+    ) -> dict:
+        com = await self._comunicaciones.get(comunicacion_id, tenant_id)
+        if not com:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Comunicación no encontrada")
+        asyncio.create_task(self._dispatch_email_best_effort(tenant_id, com, user_ids))
+        return {"enviados": len(user_ids)}
 
     # ── Colaborador: mis comunicaciones ───────────────────────────────────────
 
@@ -262,7 +281,7 @@ class ComunicacionService:
             return [str(uid) for uid in segmento_config.get("user_ids", [])]
 
         if tipo_segmento == "todos":
-            rows, _ = await self._users.list_users(tenant_id, estado="activo", page=1, page_size=10000)
+            rows, _ = await self._users.list_users(tenant_id, estado=None, page=1, page_size=10000)
             return [str(r["id"]) for r in rows]
 
         if tipo_segmento == "sede":
@@ -291,6 +310,43 @@ class ComunicacionService:
             return [str(r["id"]) for r in rows if str(r.get("puesto_id", "")) in puesto_ids]
 
         return []
+
+    async def _dispatch_email_best_effort(
+        self,
+        tenant_id: str,
+        com: dict,
+        user_ids: list[str],
+    ) -> None:
+        if not self._smtp:
+            return
+        try:
+            cfg = await self._smtp.get_config(tenant_id)
+            if not cfg:
+                return
+            subject = f"Nueva comunicación: {com['asunto']} — NUMI"
+            for uid in user_ids:
+                try:
+                    user = await self._users.get_by_id(uid)
+                    if not user or not user.get("email"):
+                        continue
+                    nombre = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Colaborador"
+                    confirmacion_msg = "<p><em>Esta comunicación requiere que confirmes su lectura en la plataforma.</em></p>" if com.get("requiere_confirmacion") else ""
+                    html = f"""
+                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                      <h2 style="color:#e87d50">{com['asunto']}</h2>
+                      <p>Hola {nombre}, recibiste una nueva comunicación:</p>
+                      <div style="background:#f8fafc;border-left:4px solid #e87d50;padding:16px 20px;margin:16px 0;border-radius:4px;color:#1e293b;line-height:1.6">
+                        {com['cuerpo']}
+                      </div>
+                      {confirmacion_msg}
+                      <p style="color:#94a3b8;font-size:12px;margin-top:24px">Ingresá a NUMI para ver todos tus comunicados.</p>
+                    </div>
+                    """
+                    await self._smtp._send(cfg, user["email"], subject, html)
+                except Exception:
+                    logger.warning("Email send failed for user %s", uid, exc_info=True)
+        except Exception:
+            logger.warning("Email dispatch failed for comunicacion", exc_info=True)
 
     async def _dispatch_wa_best_effort(
         self,

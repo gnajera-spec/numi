@@ -29,28 +29,24 @@ Al iniciar cualquier sesión o detectar compactación de contexto:
 
 ### Fase actual
 ```
-v1.3 — Módulo Colaboradores RRHH completo, bugs críticos corregidos
+v1.6 — Calendario de ausencias + UI completo
 Última actualización: 2026-05-16
-Tests: 251 pasando
-Commits pendientes: ninguno
+Tests: 140 totales
+Commits pendientes: ninguno (último: 91777bd)
 ```
 
 ### En este momento estoy trabajando en
 ```
-Nada en progreso — sistema estable, todo commiteado.
+Nada en progreso.
 ```
 
 ### Próximo paso concreto
 ```
-1. Aplicar migración pendiente en Supabase:
-   ALTER TABLE solicitudes_licencia
-     ADD COLUMN IF NOT EXISTS medico_nombre text,
-     ADD COLUMN IF NOT EXISTS medico_apellido text,
-     ADD COLUMN IF NOT EXISTS medico_matricula text,
-     ADD COLUMN IF NOT EXISTS dias_reposo integer;
-   (archivo: supabase/migrations/20260516000000_add_medical_fields_to_solicitudes.sql)
-2. QA del flujo de licencias médicas (una vez aplicada la migración)
-3. Deploy a Render cuando esté listo
+1. Aplicar AMBAS migraciones en Supabase dashboard:
+   a) supabase/migrations/20260516000000_add_medical_fields_to_solicitudes.sql
+   b) supabase/migrations/20260516300000_add_flujos_aprobacion.sql
+2. QA flujo completo REQ_14: crear flujo → crear solicitud → aprobar paso a paso
+3. Deploy a Render
 ```
 
 ### Bloqueantes activos
@@ -66,6 +62,7 @@ Nada en progreso — sistema estable, todo commiteado.
 - Backend corre en :8000, frontend en :5580
 - reset_superadmin.py en backend/ — script de utilidad (no commitear)
 - iniciar_backend.command — script de conveniencia para iniciar backend en Mac (no commitear)
+- El servidor Vite (npm run dev) corre desde /NUMI/frontend (proyecto principal), NO desde worktrees
 
 Credenciales demo (DEV):
   Super Admin     superadmin@softlink.com.ar / SuperAdmin1234  → http://localhost:5580/superadmin/login
@@ -77,10 +74,9 @@ Credenciales demo (DEV):
 
 ### Pendiente para próxima sesión
 ```
-1. Aplicar migración 20260516000000_add_medical_fields_to_solicitudes.sql en Supabase dashboard
-2. QA flujo completo de licencias (médica + administrativa) con colaborador demo
-3. Deploy a Render (opcional)
-4. WhatsApp con ngrok (opcional)
+1. Aplicar migraciones en Supabase dashboard (ver Próximo paso concreto)
+2. QA flujo completo REQ_14: crear flujo → crear solicitud → aprobar paso a paso
+3. Deploy a Render
 ```
 
 ---
@@ -101,6 +97,9 @@ Credenciales demo (DEV):
 | Fase 9 | Invitaciones + SMTP + SuperAdmin panel | ✅ Completada | 2026-05-15 |
 | Fase 10 | QA + bugfixes + licencias médicas/administrativas | ✅ Completada | 2026-05-16 |
 | Fase 11 | Módulo Colaboradores RRHH (lista + editor legajo) | ✅ Completada | 2026-05-16 |
+| Fase 12 | Módulo Configuración Admin Empresa + AdminLayout unificado | ✅ Completada | 2026-05-16 |
+| Fase 13 | REQ_14 — Flujos de aprobación parametrizables (multi-paso, por rol/departamento) | ✅ Completada | 2026-05-16 |
+| Fase 14 | Calendario de ausencias RRHH (RF-08-23) + UI full connect + panel pendientes colaborador | ✅ Completada | 2026-05-16 |
 
 ---
 
@@ -246,6 +245,8 @@ frontend/src/
     pages/admin/AdminOrganizacionPage.tsx   ✅ /admin/organizacion — 4 tabs (Sedes, Departamentos árbol, Puestos, Convenios), create modal + toggle activo/inactivo
     pages/admin/AdminSmtpConfigPage.tsx     ✅ /admin/configuracion/smtp — toggle NUMI vs custom SMTP, form, test conexión
     pages/admin/AdminTiposLicenciasPage.tsx ✅ /admin/tipos-licencias — lista, crear, eliminar tipos de licencia
+    pages/admin/AdminAprobacionesConfigPage.tsx ✅ /admin/configuracion/aprobaciones — tabla tipos de licencia con flujo configurado, acciones Configurar/Editar/Desactivar
+    pages/admin/FlujoDiseñadorPage.tsx      ✅ /admin/configuracion/aprobaciones/nuevo|:id — diseñador visual: nombre, pasos dinámicos (rol/departamento, SLA, comentario)
     pages/admin/AdminColaboradoresPage.tsx  ✅ /admin/colaboradores — lista con search + filtro estado, cards con avatar/legajo/sede/depto
     pages/admin/AdminColaboradorDetailPage.tsx ✅ /admin/colaboradores/:id — detalle + 3 secciones editables: datos personales, legajo laboral, estructura organizativa
 
@@ -270,7 +271,8 @@ app/routers/
   users.py         ✅ CRUD + invitaciones + ciclo de vida (suspend/reactivate/baja)
   recibos.py       ✅ Períodos, upload ZIP/PDF, distribución, firma, CSV export
   whatsapp.py      ✅ GET|POST /webhook, GET|PUT /config
-  licencias.py     ✅ tipos, políticas, solicitudes (CRUD + aprobar/rechazar/cancelar), saldo
+  licencias.py     ✅ tipos, políticas, solicitudes (CRUD + aprobar/rechazar/cancelar + aprobar-paso/rechazar-paso + historial + pendientes-mi-aprobacion), saldo
+  flujos_aprobacion.py ✅ GET /admin/flujos-aprobacion (list), GET /{id}, POST (create), PUT /{id} (update), PATCH /{id}/deactivate, GET /departamentos
   comunicaciones.py ✅ POST /comunicaciones, GET /comunicaciones, GET /{id}, POST /{id}/adjuntos, POST /{id}/enviar, POST /{id}/reenviar, GET /colaborador, POST /{id}/confirmar
   medico.py        ✅ GET /medico/fichas, GET|PUT /medico/fichas/{user_id}, GET|POST /medico/examenes/{user_id}, GET|POST /medico/vacunaciones/{user_id}, GET|POST /medico/aptitudes/{user_id}, GET|POST /medico/accidentes, PATCH /medico/accidentes/{id}, GET /medico/reportes/absentismo, GET /medico/reportes/aptitudes-por-vencer
   reportes.py      ✅ GET /reportes/dashboard, GET /reportes/headcount, GET /reportes/licencias, GET /reportes/export/licencias, GET /reportes/export/comunicaciones
@@ -292,7 +294,9 @@ app/repositories/
   whatsapp_log_repository.py               ✅ log de mensajes inbound/outbound
   tipo_licencia_repository.py              ✅ list (globales + tenant), get, create
   politica_licencia_repository.py          ✅ list, get_for_tipo, create
-  solicitud_licencia_repository.py         ✅ create, get, list_all, list_by_user, has_overlap, update_estado
+  solicitud_licencia_repository.py         ✅ create, get, list_all, list_by_user, has_overlap, update_estado, update
+  flujo_aprobacion_repository.py           ✅ list_tipos_licencia, list_active_flujos, get_by_id, get_active_for_tipo, create, update, deactivate, count_active_solicitudes, get_pasos, create_paso, delete_pasos, get_departamentos_activos
+  aprobacion_solicitud_repository.py       ✅ create_many, get_by_solicitud, get_current_paso, update_paso, mark_remaining_omitido, get_pendientes_para_rol, get_pendientes_para_departamento
   saldo_licencia_repository.py             ✅ get, list_for_user, ensure_saldo, add/subtract_pendientes, approve
   comunicacion_repository.py               ✅ create, get, list_by_tenant, update_estado, set_enviado, mark_enviado_completo
   comunicacion_destinatario_repository.py  ✅ bulk_create, list_by_comunicacion, list_by_user, get_for_user, mark_leido/confirmado, get_metricas
@@ -320,7 +324,8 @@ app/services/
   auth_service.py     ✅ login (2-step si MFA activo), refresh, logout, activate, get_me
   mfa_service.py      ✅ setup_totp (genera QR), enable, disable, challenge — TOTP via pyotp + backup codes
   recibo_service.py   ✅ períodos, upload, confirm, distribuir, firmar, CSV
-  licencia_service.py ✅ tipos, políticas, solicitudes + notificaciones WA best-effort
+  licencia_service.py ✅ tipos, políticas, solicitudes + notificaciones WA + flujo multi-paso (aprobar_paso/rechazar_paso, _check_paso_authorization, pendientes_mi_aprobacion)
+  flujo_aprobacion_service.py ✅ CRUD flujos + pasos (create/update/deactivate), list_tipos_con_flujo, get_departamentos
   comunicacion_service.py ✅ create, list, enviar (segmentado), reenviar, confirmar + dispatch WA
   medico_service.py   ✅ fichas (AES-256), exámenes (encriptado + storage), vacunaciones, aptitudes, accidentes, reportes
   reporte_service.py  ✅ dashboard KPIs (asyncio.gather), headcount, tendencia, exports CSV
@@ -364,6 +369,10 @@ META_APP_SECRET=               # App Secret de Meta para validar firma HMAC-SHA2
 20260513010000_add_upload_jobs_table.sql     — tabla upload_jobs (id, tenant_id, periodo_id, metadata JSONB, expires_at)
 20260515000000_add_roles_array_to_users.sql  — columna roles text[] en users (multi-rol), inicializada desde role existente
 20260515010000_add_invitaciones_smtp.sql     — tabla invitaciones (token, cuil, email, TTL 7d) + tabla smtp_config
+
+Pendientes de aplicar en Supabase dashboard:
+20260516000000_add_medical_fields_to_solicitudes.sql — columnas medico_nombre/apellido/matricula, dias_reposo en solicitudes_licencia
+20260516300000_add_flujos_aprobacion.sql             — flujos_aprobacion, pasos_flujo, aprobaciones_solicitud + ALTER solicitudes_licencia
 ```
 
 ### Storage Supabase
@@ -387,6 +396,82 @@ Acceso: solo vía signed URL (TTL 24h) — nunca exponer storage_path al cliente
 ---
 
 ## LOG DE SESIONES
+
+### 2026-05-16 — Sesión 19
+**Duración aproximada:** 90 min
+**Objetivo de la sesión:** Implementar REQ_14 — Flujos de aprobación parametrizables
+
+**Completado:**
+
+**Backend — 6 nuevos archivos / 5 modificados:**
+- `supabase/migrations/20260516300000_add_flujos_aprobacion.sql` — 3 nuevas tablas (`flujos_aprobacion`, `pasos_flujo`, `aprobaciones_solicitud`), ALTER `solicitudes_licencia` para agregar `flujo_id` + `paso_actual`, índices y RLS
+- `backend/app/schemas/flujos_aprobacion.py` — schemas Pydantic: PasoFlujoCreate (validator exclusividad rol/departamento), FlujoAprobacionCreate (validator pasos contiguos), FlujoAprobacionOut, TipoLicenciaConFlujoOut, AprobarPasoRequest, RechazarPasoRequest, AprobacionSolicitudOut
+- `backend/app/repositories/flujo_aprobacion_repository.py` — CRUD flujos y pasos, consulta departamentos activos
+- `backend/app/repositories/aprobacion_solicitud_repository.py` — trazabilidad de pasos, dashboard queries por rol y departamento
+- `backend/app/services/flujo_aprobacion_service.py` — CRUD flujos con validaciones (conflicto flujo activo, solicitudes activas al editar), list overview
+- `backend/app/routers/flujos_aprobacion.py` — 6 endpoints bajo `/admin/flujos-aprobacion`, requiere `admin_empresa` (lectura: `rrhh` también)
+- `backend/app/services/licencia_service.py` — integrado flujo multi-paso: `create_solicitud` detecta flujo activo + crea snapshots `aprobaciones_solicitud`; nuevos métodos `aprobar_paso`, `rechazar_paso`, `_check_paso_authorization`, `pendientes_mi_aprobacion`, `get_historial_aprobacion`; `cancelar_solicitud` actualiza para RN-08
+- `backend/app/routers/licencias.py` — 4 nuevos endpoints: `pendientes-mi-aprobacion`, `aprobar-paso`, `rechazar-paso`, `historial-aprobacion`; `_get_service` inyecta nuevos repos
+- `backend/app/repositories/colaborador_repository.py` — agregado `get_by_user_id`
+- `backend/app/repositories/solicitud_licencia_repository.py` — agregado `update` genérico
+- `backend/main.py` — registrado `flujos_aprobacion` router
+
+**Tests — 12 nuevos tests:**
+- `backend/tests/services/test_flujo_aprobacion_service.py` — 12 tests: validaciones schema, create/deactivate/update con conflictos, list_tipos_con_flujo
+
+**Frontend — 3 nuevos archivos / 1 modificado:**
+- `frontend/src/services/flujoAprobacionService.ts` — service con types + CRUD + departamentos
+- `frontend/src/pages/admin/AdminAprobacionesConfigPage.tsx` — reemplaza placeholder; tabla de todos los tipos de licencia con su flujo (o "Default"), acciones Configurar/Editar/Desactivar
+- `frontend/src/pages/admin/FlujoDiseñadorPage.tsx` — diseñador visual de flujos: nombre, descripción, pasos dinámicos (add/remove, hasta 5), selector tipo rol/departamento, SLA, comentario obligatorio; modo crear y editar
+- `frontend/src/App.tsx` — 2 rutas nuevas: `/configuracion/aprobaciones/nuevo` y `/configuracion/aprobaciones/:flujoId`
+
+**Estado al cerrar:** TypeScript sin errores. 26 tests pasan (flujos + licencias). Backend importa correctamente. Migraciones pendientes de aplicar en Supabase.
+
+**Pendiente de UI (futuras sesiones):**
+- Historial de aprobación visible en detalle de solicitud (AdminLicenciasPage)
+- Panel "Pendientes de mi aprobación" en portal colaborador (tipo departamento)
+
+**Commit:** Pendiente (sesión 18 + 19 juntas)
+
+---
+
+### 2026-05-16 — Sesión 18
+**Duración aproximada:** 60 min
+**Objetivo de la sesión:** Módulo Configuración para Admin Empresa + unificación de AdminLayout
+
+**Completado:**
+
+**Módulo Configuración — Admin Empresa:**
+- `frontend/src/pages/admin/AdminConfiguracionPage.tsx` (NUEVO) — hub `/admin/configuracion` con 3 cards clicables: Tipos de licencias, Aprobaciones de licencias, Configuración de email
+- `frontend/src/pages/admin/AdminTiposLicenciasPage.tsx` (NUEVO) — `/admin/tipos-licencias` — tabla con CRUD de tipos de licencia (nombre, descripción, días máx., requiere certificado, estado); modal crear/editar; datos mock temporales hasta conectar backend
+- `frontend/src/pages/admin/AdminSmtpConfigPage.tsx` (ACTUALIZADO) — selector de modo Numi vs SMTP propio con cards visuales; modo Numi muestra banner informativo; modo SMTP despliega formulario en 3 cards (Servidor, Credenciales, Remitente) + botón test
+- `frontend/src/pages/admin/AdminAprobacionesConfigPage.tsx` (NUEVO) — `/admin/configuracion/aprobaciones` — placeholder "Próximamente"
+- `frontend/src/App.tsx` — rutas nuevas: `configuracion`, `tipos-licencias`, `configuracion/smtp`, `configuracion/aprobaciones`
+
+**AdminLayout — reescritura completa:**
+- `frontend/src/components/AdminLayout.tsx` — reescrito para que coincida visual y estructuralmente con `Layout.tsx`:
+  - `NumiLogo` en el header del sidebar (igual que portal colaborador)
+  - `ProfileSwitcher` al pie con panel "Cambiar portal" animado y logout
+  - Top bar con nombre del portal y avatar con color por rol
+  - Navegación por rol: `rrhh` ve menú operativo completo; `admin_empresa` ve solo Usuarios + Organización + Configuración; `super_admin` ve todo + médico + configuración; `servicio_medico` ve solo fichas/accidentes/reportes
+  - Soporte mobile con drawer animado
+
+**Fix de worktree vs proyecto principal:**
+- Detectado que el servidor Vite corre desde `/NUMI/frontend` (proyecto principal), no desde el worktree. Todos los archivos modificados se copiaron al proyecto principal con `cp`.
+
+**Archivos modificados en `/NUMI/frontend/src/`:**
+- `components/AdminLayout.tsx` — reescrito
+- `App.tsx` — 4 rutas nuevas + 4 imports
+- `pages/admin/AdminConfiguracionPage.tsx` — NUEVO
+- `pages/admin/AdminTiposLicenciasPage.tsx` — NUEVO
+- `pages/admin/AdminSmtpConfigPage.tsx` — actualizado
+- `pages/admin/AdminAprobacionesConfigPage.tsx` — NUEVO
+
+**Commit:** Pendiente
+
+**Estado al cerrar:** 251 tests pasando. Build TypeScript sin errores. AdminLayout visualmente unificado con el resto del sistema. Módulo Configuración navegable en browser. Datos de tipos de licencia son mock — pendiente conectar backend.
+
+---
 
 ### 2026-05-16 — Sesión 17
 **Duración aproximada:** 45 min

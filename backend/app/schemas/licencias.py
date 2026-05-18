@@ -31,6 +31,14 @@ class CreateTipoLicenciaRequest(BaseModel):
     dias_maximos: int | None = Field(default=None, ge=1, le=365)
 
 
+class UpdateTipoLicenciaRequest(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1)
+    descripcion: str | None = None
+    requiere_certificado: bool | None = None
+    dias_maximos: int | None = Field(default=None, ge=1, le=365)
+    is_active: bool | None = None
+
+
 # ── Políticas ─────────────────────────────────────────────────────────────────
 
 class PoliticaLicenciaOut(BaseModel):
@@ -99,11 +107,19 @@ class SolicitudLicenciaOut(BaseModel):
     canal: str
     documentos: list[dict] = []
     created_at: datetime
+    # Solicitante
+    user_nombre: str = ""
+    user_cuil: str | None = None
     # Medical fields
     medico_nombre: str | None = None
     medico_apellido: str | None = None
     medico_matricula: str | None = None
     dias_reposo: int | None = None
+    # Flujo de aprobación
+    flujo_id: str | None = None
+    paso_actual: int | None = None
+    # Acción del usuario actual en el paso pendiente (None si no es su paso)
+    mi_tipo_accion: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -111,6 +127,9 @@ class SolicitudLicenciaOut(BaseModel):
     def from_row(cls, row: dict) -> "SolicitudLicenciaOut":
         tipo_data = row.get("tipos_licencia") or {}
         revisado_data = row.get("revisado_por_user")
+        user_data = row.get("users") or {}
+        first = user_data.get("first_name", "")
+        last = user_data.get("last_name", "")
 
         return cls(
             id=row["id"],
@@ -131,10 +150,15 @@ class SolicitudLicenciaOut(BaseModel):
             canal=row["canal"],
             documentos=row.get("documentos_solicitud") or [],
             created_at=row["created_at"],
+            user_nombre=f"{first} {last}".strip(),
+            user_cuil=user_data.get("cuil"),
             medico_nombre=row.get("medico_nombre"),
             medico_apellido=row.get("medico_apellido"),
             medico_matricula=row.get("medico_matricula"),
             dias_reposo=row.get("dias_reposo"),
+            flujo_id=str(row["flujo_id"]) if row.get("flujo_id") else None,
+            paso_actual=row.get("paso_actual"),
+            mi_tipo_accion=row.get("_mi_tipo_accion"),
         )
 
 
@@ -201,3 +225,16 @@ class SaldoLicenciaOut(BaseModel):
 class PaginatedSolicitudes(BaseModel):
     data: list[SolicitudLicenciaOut]
     pagination: Pagination
+
+
+# ── Calendario ────────────────────────────────────────────────────────────────
+
+class CalendarioItemOut(BaseModel):
+    id: UUID
+    user_id: UUID
+    user_nombre: str
+    tipo_licencia: TipoLicenciaRef
+    fecha_inicio: date
+    fecha_fin: date
+    dias_habiles: int
+    estado: str

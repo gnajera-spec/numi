@@ -1,3 +1,5 @@
+import asyncio
+import calendar
 import logging
 import math
 from datetime import date, datetime, timedelta, timezone
@@ -7,14 +9,24 @@ import httpx
 from fastapi import HTTPException, status
 from supabase._async.client import AsyncClient
 
+from app.repositories.aprobacion_solicitud_repository import AprobacionSolicitudRepository
+from app.repositories.colaborador_repository import ColaboradorRepository
+from app.repositories.flujo_aprobacion_repository import FlujoAprobacionRepository
 from app.repositories.politica_licencia_repository import PoliticaLicenciaRepository
 from app.repositories.saldo_licencia_repository import SaldoLicenciaRepository
 from app.repositories.solicitud_licencia_repository import SolicitudLicenciaRepository
 from app.repositories.tipo_licencia_repository import TipoLicenciaRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
+from app.schemas.flujos_aprobacion import (
+    AprobacionSolicitudOut,
+    AprobarPasoRequest,
+    DerivarPasoRequest,
+    RechazarPasoRequest,
+)
 from app.schemas.licencias import (
     AprobarSolicitudRequest,
+    CalendarioItemOut,
     CreatePoliticaRequest,
     CreateSolicitudRequest,
     CreateTipoLicenciaRequest,
@@ -23,9 +35,12 @@ from app.schemas.licencias import (
     RechazarSolicitudRequest,
     SaldoLicenciaOut,
     SolicitudLicenciaOut,
+    TipoLicenciaRef,
     TipoLicenciaOut,
+    UpdateTipoLicenciaRequest,
 )
 from app.schemas.users import Pagination
+from app.services.smtp_service import SmtpService
 from app.utils.encryption import decrypt
 
 logger = logging.getLogger(__name__)
@@ -58,6 +73,10 @@ class LicenciaService:
         saldo_repo: SaldoLicenciaRepository,
         user_repo: UserRepository,
         wa_config_repo: WhatsappConfigRepository | None = None,
+        flujo_repo: FlujoAprobacionRepository | None = None,
+        aprobacion_repo: AprobacionSolicitudRepository | None = None,
+        colaborador_repo: ColaboradorRepository | None = None,
+        smtp_service: SmtpService | None = None,
     ) -> None:
         self._db = db
         self._tipos = tipo_repo
@@ -66,6 +85,10 @@ class LicenciaService:
         self._saldos = saldo_repo
         self._users = user_repo
         self._wa_configs = wa_config_repo
+        self._flujos = flujo_repo
+        self._aprobaciones = aprobacion_repo
+        self._colaboradores = colaborador_repo
+        self._smtp = smtp_service
 
     # ── Tipos ─────────────────────────────────────────────────────────────────
 
@@ -84,15 +107,28 @@ class LicenciaService:
         row = await self._tipos.create(tenant_id, payload)
         return TipoLicenciaOut.model_validate(row)
 
+    async def update_tipo(self, tipo_id: str, tenant_id: str, data: UpdateTipoLicenciaRequest) -> TipoLicenciaOut:
+        tipo = await self._tipos.get(tipo_id, tenant_id)
+        if not tipo:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
+        if tipo.get("tenant_id") is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No se pueden modificar los tipos de licencia globales")
+
+        payload = {k: v for k, v in data.model_dump().items() if v is not None}
+        if not payload:
+            return TipoLicenciaOut.model_validate(tipo)
+        row = await self._tipos.update(tipo_id, tenant_id, payload)
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
+        return TipoLicenciaOut.model_validate(row)
+
     async def delete_tipo(self, tipo_id: str, tenant_id: str) -> None:
         tipo = await self._tipos.get(tipo_id, tenant_id)
         if not tipo:
-            from fastapi import HTTPException, status
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
-        deleted = await self._tipos.deactivate(tipo_id)
-        if not deleted:
-            from fastapi import HTTPException, status
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "No se pudo eliminar el tipo")
+        if tipo.get("tenant_id") is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No se pueden eliminar tipos de licencia globales")
+        await self._tipos.deactivate(tipo_id)
 
     # ── Políticas ─────────────────────────────────────────────────────────────
 
@@ -110,10 +146,73 @@ class LicenciaService:
 
     # ── Solicitudes ───────────────────────────────────────────────────────────
 
+    async def _inject_mi_tipo_accion_batch(
+        self, rows: list[dict], current_user: dict | None = None
+    ) -> list[dict]:
+        """Batch-inject _mi_tipo_accion for solicitudes with an active flujo paso.
+
+        Fetches all pending aprobaciones for the given rows in one query and injects
+        the tipo_accion of the current pending paso into each matching row dict.
+
+        When current_user is provided, the injected value is adjusted to reflect
+        whether the caller is actually authorized to act on the step. If they are
+        not the designated approver, 'solo_ver' is returned so the UI hides the
+        action buttons (the backend would 403 anyway).
+        """
+        if not self._aprobaciones:
+            return rows
+        solicitud_ids = [
+            str(r["id"]) for r in rows
+            if r.get("flujo_id") and r.get("paso_actual") is not None
+        ]
+        if not solicitud_ids:
+            return rows
+
+        apm_res = await self._db.table("aprobaciones_solicitud").select(
+            "solicitud_id, tipo_accion, tipo_aprobador, rol_aprobador, orden"
+        ).in_("solicitud_id", solicitud_ids).eq("estado", "pendiente").execute()
+
+        # Map each solicitud to its lowest-orden pending aprobacion
+        tipo_map: dict[str, tuple[str, int, str, str | None]] = {}
+        for a in (apm_res.data or []):
+            sid = str(a["solicitud_id"])
+            if sid not in tipo_map or a["orden"] < tipo_map[sid][1]:
+                tipo_map[sid] = (
+                    a["tipo_accion"], a["orden"],
+                    a["tipo_aprobador"], a.get("rol_aprobador"),
+                )
+
+        role = current_user.get("role", "") if current_user else ""
+
+        for r in rows:
+            sid = str(r["id"])
+            if sid not in tipo_map:
+                continue
+            tipo_accion, _, tipo_aprobador, rol_aprobador = tipo_map[sid]
+
+            # If already solo_ver, nothing to adjust
+            if tipo_accion == "solo_ver" or not current_user:
+                r["_mi_tipo_accion"] = tipo_accion
+                continue
+
+            # admin_empresa can act on any non-solo_ver step
+            if role == "admin_empresa":
+                r["_mi_tipo_accion"] = tipo_accion
+            elif tipo_aprobador == "rol":
+                # Only the designated role can act; others are observers
+                r["_mi_tipo_accion"] = tipo_accion if role == rol_aprobador else "solo_ver"
+            elif tipo_aprobador == "departamento":
+                # Only colaboradores in the dept can act
+                r["_mi_tipo_accion"] = tipo_accion if role == "colaborador" else "solo_ver"
+            else:
+                r["_mi_tipo_accion"] = tipo_accion
+        return rows
+
     async def list_solicitudes(
         self,
         tenant_id: str,
         *,
+        current_user: dict | None = None,
         estado: str | None = None,
         tipo_licencia_id: str | None = None,
         user_id: str | None = None,
@@ -124,9 +223,29 @@ class LicenciaService:
             tenant_id, estado=estado, tipo_licencia_id=tipo_licencia_id, user_id=user_id,
             page=page, page_size=page_size,
         )
+        rows = await self._inject_mi_tipo_accion_batch(rows, current_user=current_user)
         return PaginatedSolicitudes(
             data=[SolicitudLicenciaOut.from_row(r) for r in rows],
             pagination=_build_pagination(total, page, page_size, "/licencias/solicitudes"),
+        )
+
+    async def list_solicitudes_medicas(
+        self,
+        tenant_id: str,
+        *,
+        estado: str | None = None,
+        user_id: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> PaginatedSolicitudes:
+        """Lista solicitudes de tipo médico (es_medica=True). Acceso: servicio_medico, rrhh, admin."""
+        rows, total = await self._solicitudes.list_all(
+            tenant_id, estado=estado, user_id=user_id, es_medica=True,
+            page=page, page_size=page_size,
+        )
+        return PaginatedSolicitudes(
+            data=[SolicitudLicenciaOut.from_row(r) for r in rows],
+            pagination=_build_pagination(total, page, page_size, "/licencias/solicitudes-medicas"),
         )
 
     async def create_solicitud(
@@ -148,20 +267,6 @@ class LicenciaService:
         if not tipo:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Tipo de licencia no encontrado")
 
-        # Validate medical fields for medical license types
-        if tipo.get("es_medica"):
-            missing = [f for f, v in [
-                ("medico_nombre", data.medico_nombre),
-                ("medico_apellido", data.medico_apellido),
-                ("medico_matricula", data.medico_matricula),
-                ("dias_reposo", data.dias_reposo),
-            ] if not v]
-            if missing:
-                raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    f"Campos requeridos para licencia médica: {', '.join(missing)}"
-                )
-
         # Validate dias_maximos
         dias = _calc_dias_habiles(data.fecha_inicio, data.fecha_fin)
         if tipo.get("dias_maximos") and dias > tipo["dias_maximos"]:
@@ -180,8 +285,12 @@ class LicenciaService:
                 "Las fechas solicitadas se superponen con otra solicitud activa"
             )
 
-        # Create solicitud
-        payload: dict = {
+        # Detect active flow for this tipo
+        flujo = None
+        if self._flujos:
+            flujo = await self._flujos.get_active_for_tipo(tenant_id, str(data.tipo_licencia_id))
+
+        solicitud_data: dict = {
             "tenant_id": tenant_id,
             "user_id": target_user_id,
             "tipo_licencia_id": str(data.tipo_licencia_id),
@@ -192,14 +301,42 @@ class LicenciaService:
             "comentario_empleado": data.comentario,
             "canal": canal,
         }
-        if tipo.get("es_medica"):
-            payload.update({
-                "medico_nombre": data.medico_nombre,
-                "medico_apellido": data.medico_apellido,
-                "medico_matricula": data.medico_matricula,
-                "dias_reposo": data.dias_reposo,
-            })
-        row = await self._solicitudes.create(payload)
+        if data.medico_nombre:
+            solicitud_data["medico_nombre"] = data.medico_nombre
+        if data.medico_apellido:
+            solicitud_data["medico_apellido"] = data.medico_apellido
+        if data.medico_matricula:
+            solicitud_data["medico_matricula"] = data.medico_matricula
+        if data.dias_reposo:
+            solicitud_data["dias_reposo"] = data.dias_reposo
+        if flujo:
+            solicitud_data["flujo_id"] = str(flujo["id"])
+            solicitud_data["paso_actual"] = 1
+
+        row = await self._solicitudes.create(solicitud_data)
+
+        # Create step tracking snapshot rows if flow exists
+        if flujo and self._aprobaciones and self._flujos:
+            pasos = await self._flujos.get_pasos(str(flujo["id"]))
+            aprobacion_rows = []
+            for paso in pasos:
+                aprobacion_rows.append({
+                    "solicitud_id": str(row["id"]),
+                    "tenant_id": tenant_id,
+                    "paso_id": str(paso["id"]),
+                    "orden": paso["orden"],
+                    "nombre_paso": paso["nombre"],
+                    "tipo_aprobador": paso["tipo_aprobador"],
+                    "rol_aprobador": paso.get("rol_aprobador"),
+                    "departamento_id": str(paso["departamento_id"]) if paso.get("departamento_id") else None,
+                    "departamento_nombre": paso.get("departamento_nombre"),
+                    "tipo_accion": paso.get("tipo_accion", "aprobar"),
+                    "estado": "pendiente",
+                })
+            await self._aprobaciones.create_many(aprobacion_rows)
+
+            # Auto-advance any leading 'solo_ver' steps immediately
+            row = await self._auto_advance_solo_ver(row, pasos, tenant_id)
 
         # Update saldo: increment dias_pendientes
         anio = data.fecha_inicio.year
@@ -207,6 +344,7 @@ class LicenciaService:
             tenant_id, target_user_id, str(data.tipo_licencia_id), anio, dias
         )
 
+        asyncio.create_task(self._notify_email(row, "creada"))
         return SolicitudLicenciaOut.from_row(row)
 
     async def get_solicitud(self, solicitud_id: str | UUID, current_user: dict) -> SolicitudLicenciaOut:
@@ -241,14 +379,6 @@ class LicenciaService:
                 f"No se puede aprobar una solicitud en estado '{row['estado']}'"
             )
 
-        # servicio_medico can only approve medical license types
-        reviewer_role = current_user.get("role", "")
-        tipo = await self._tipos.get(row["tipo_licencia_id"], str(row["tenant_id"]))
-        if reviewer_role == "servicio_medico" and not (tipo or {}).get("es_medica"):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Servicio médico solo puede aprobar licencias médicas")
-        if reviewer_role == "rrhh" and (tipo or {}).get("es_medica"):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "RRHH solo puede aprobar licencias administrativas")
-
         updated = await self._solicitudes.update_estado(
             solicitud_id,
             "aprobada",
@@ -266,8 +396,9 @@ class LicenciaService:
             row["dias_habiles"],
         )
 
-        # Notify collaborator via WA (best-effort)
+        # Notify collaborator via WA and email (best-effort)
         await self._notify_wa(row, "aprobada", comentario=data.comentario)
+        asyncio.create_task(self._notify_email(row, "aprobada", comentario=data.comentario))
 
         return SolicitudLicenciaOut.from_row(updated)
 
@@ -290,13 +421,6 @@ class LicenciaService:
                 f"No se puede rechazar una solicitud en estado '{row['estado']}'"
             )
 
-        reviewer_role = current_user.get("role", "")
-        tipo = await self._tipos.get(row["tipo_licencia_id"], str(row["tenant_id"]))
-        if reviewer_role == "servicio_medico" and not (tipo or {}).get("es_medica"):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Servicio médico solo puede rechazar licencias médicas")
-        if reviewer_role == "rrhh" and (tipo or {}).get("es_medica"):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "RRHH solo puede rechazar licencias administrativas")
-
         updated = await self._solicitudes.update_estado(
             solicitud_id,
             "rechazada",
@@ -315,6 +439,7 @@ class LicenciaService:
         )
 
         await self._notify_wa(row, "rechazada", comentario=data.comentario)
+        asyncio.create_task(self._notify_email(row, "rechazada", comentario=data.comentario))
 
         return SolicitudLicenciaOut.from_row(updated)
 
@@ -331,13 +456,25 @@ class LicenciaService:
         if current_user["role"] == "colaborador" and str(row["user_id"]) != str(current_user["id"]):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Sin permisos")
 
-        if row["estado"] != "pendiente":
+        # RN-08: en_revision only admin_empresa can cancel
+        if row["estado"] == "en_revision" and current_user["role"] != "admin_empresa":
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Solo el Administrador puede cancelar una solicitud en revisión"
+            )
+        if row["estado"] not in ("pendiente", "en_revision"):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
-                "Solo se puede cancelar una solicitud en estado 'pendiente'"
+                f"No se puede cancelar una solicitud en estado '{row['estado']}'"
             )
 
         updated = await self._solicitudes.update_estado(solicitud_id, "cancelada")
+
+        # Mark remaining pending steps as omitido
+        if self._aprobaciones and row.get("paso_actual"):
+            await self._aprobaciones.mark_remaining_omitido(
+                str(solicitud_id), row["paso_actual"] - 1
+            )
 
         anio = row["fecha_inicio"].year if isinstance(row["fecha_inicio"], date) else int(str(row["fecha_inicio"])[:4])
         await self._saldos.subtract_pendientes(
@@ -385,6 +522,452 @@ class LicenciaService:
         anio = anio or datetime.now(timezone.utc).year
         rows = await self._saldos.list_for_user(tenant_id, user_id, anio)
         return [SaldoLicenciaOut.from_row(r) for r in rows]
+
+    # ── Calendario ────────────────────────────────────────────────────────────
+
+    async def get_calendario(
+        self,
+        current_user: dict,
+        mes: str,
+        departamento_id: str | None = None,
+    ) -> list[CalendarioItemOut]:
+        tenant_id = str(current_user["tenant_id"])
+
+        # Parse "YYYY-MM" into date range
+        year, month = int(mes[:4]), int(mes[5:7])
+        mes_inicio = f"{year}-{month:02d}-01"
+        last_day = calendar.monthrange(year, month)[1]
+        mes_fin = f"{year}-{month:02d}-{last_day:02d}"
+
+        user_ids: list[str] | None = None
+        if departamento_id:
+            res = await self._db.table("colaborador_perfil").select("user_id").eq("tenant_id", tenant_id).eq("departamento_id", departamento_id).execute()
+            user_ids = [r["user_id"] for r in (res.data or [])]
+            if not user_ids:
+                return []
+
+        rows = await self._solicitudes.list_for_calendar(tenant_id, mes_inicio, mes_fin, user_ids)
+        if not rows:
+            return []
+
+        unique_uids = list({r["user_id"] for r in rows})
+        users_res = await self._db.table("users").select("id, first_name, last_name").in_("id", unique_uids).execute()
+        name_map = {u["id"]: f"{u['first_name']} {u['last_name']}".strip() for u in (users_res.data or [])}
+
+        result: list[CalendarioItemOut] = []
+        for r in rows:
+            tipo_data = r.get("tipos_licencia") or {}
+            result.append(CalendarioItemOut(
+                id=r["id"],
+                user_id=r["user_id"],
+                user_nombre=name_map.get(r["user_id"], ""),
+                tipo_licencia=TipoLicenciaRef(
+                    id=tipo_data.get("id", r["tipo_licencia_id"]),
+                    codigo=tipo_data.get("codigo", ""),
+                    nombre=tipo_data.get("nombre", ""),
+                ),
+                fecha_inicio=r["fecha_inicio"],
+                fecha_fin=r["fecha_fin"],
+                dias_habiles=r["dias_habiles"],
+                estado=r["estado"],
+            ))
+        return result
+
+    # ── Flujo: paso-based approval ────────────────────────────────────────────
+
+    async def get_historial_aprobacion(
+        self, solicitud_id: str | UUID, current_user: dict
+    ) -> list[AprobacionSolicitudOut]:
+        if not self._aprobaciones:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Módulo de flujos no disponible")
+        row = await self._solicitudes.get(solicitud_id)
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if str(row["tenant_id"]) != str(current_user["tenant_id"]):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if current_user["role"] not in ("rrhh", "admin_empresa", "super_admin", "servicio_medico"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Sin permisos")
+        pasos = await self._aprobaciones.get_by_solicitud(str(solicitud_id))
+        return [AprobacionSolicitudOut.model_validate(p) for p in pasos]
+
+    async def pendientes_mi_aprobacion(
+        self, current_user: dict, page: int = 1, page_size: int = 20
+    ) -> PaginatedSolicitudes:
+        if not self._aprobaciones:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Módulo de flujos no disponible")
+        tenant_id = str(current_user["tenant_id"])
+        role = current_user["role"]
+
+        if role == "admin_empresa":
+            # Admin sees everything pending
+            rows, total = await self._solicitudes.list_all(
+                tenant_id, estado="pendiente", page=page, page_size=page_size
+            )
+            # Also en_revision
+            rows2, total2 = await self._solicitudes.list_all(
+                tenant_id, estado="en_revision", page=1, page_size=page_size
+            )
+            rows = rows + rows2
+            total = total + total2
+            rows = await self._inject_mi_tipo_accion_batch(rows)
+        elif role in ("rrhh", "servicio_medico"):
+            rows, total = await self._aprobaciones.get_pendientes_para_rol(
+                tenant_id, role, page, page_size
+            )
+        elif role == "colaborador":
+            if not self._colaboradores:
+                return PaginatedSolicitudes(
+                    data=[],
+                    pagination=_build_pagination(0, page, page_size, "/licencias/pendientes-mi-aprobacion"),
+                )
+            perfil = await self._colaboradores.get_by_user_id(str(current_user["id"]))
+            if not perfil or not perfil.get("departamento_id"):
+                return PaginatedSolicitudes(
+                    data=[],
+                    pagination=_build_pagination(0, page, page_size, "/licencias/pendientes-mi-aprobacion"),
+                )
+            rows, total = await self._aprobaciones.get_pendientes_para_departamento(
+                tenant_id,
+                str(perfil["departamento_id"]),
+                str(current_user["id"]),
+                page,
+                page_size,
+            )
+        else:
+            rows, total = [], 0
+
+        return PaginatedSolicitudes(
+            data=[SolicitudLicenciaOut.from_row(r) for r in rows],
+            pagination=_build_pagination(total, page, page_size, "/licencias/pendientes-mi-aprobacion"),
+        )
+
+    async def aprobar_paso(
+        self,
+        solicitud_id: str | UUID,
+        current_user: dict,
+        data: AprobarPasoRequest,
+    ) -> SolicitudLicenciaOut:
+        if not self._aprobaciones or not self._flujos:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Módulo de flujos no disponible")
+
+        row = await self._solicitudes.get(solicitud_id)
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if str(row["tenant_id"]) != str(current_user["tenant_id"]):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if row["estado"] not in ("pendiente", "en_revision"):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"La solicitud no está en estado procesable (estado: {row['estado']})"
+            )
+        if not row.get("flujo_id"):
+            # Fallback: use legacy single-step approval
+            return await self.aprobar_solicitud(solicitud_id, current_user, AprobarSolicitudRequest(comentario=data.comentario))
+
+        paso_actual_num = row["paso_actual"]
+        aprobacion = await self._aprobaciones.get_current_paso(str(solicitud_id), paso_actual_num)
+        if not aprobacion:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paso de aprobación no encontrado")
+        if aprobacion["estado"] != "pendiente":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Este paso ya fue resuelto")
+
+        # Authorization check
+        await self._check_paso_authorization(aprobacion, current_user, row)
+
+        # Validate comentario if required
+        paso_def = await self._flujos.get_pasos(str(row["flujo_id"]))
+        paso_config = next((p for p in paso_def if p["orden"] == paso_actual_num), None)
+        if paso_config and paso_config["requiere_comentario"] and not data.comentario:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Este paso requiere un comentario al aprobar"
+            )
+
+        # Mark step as approved
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        await self._aprobaciones.update_paso(str(aprobacion["id"]), {
+            "estado": "aprobado",
+            "aprobado_por": str(current_user["id"]),
+            "comentario": data.comentario,
+            "fecha_decision": now.isoformat(),
+        })
+
+        # Count total steps for this flow
+        total_pasos = len(paso_def)
+        is_last = paso_actual_num >= total_pasos
+
+        if is_last:
+            anio = row["fecha_inicio"].year if isinstance(row["fecha_inicio"], date) else int(str(row["fecha_inicio"])[:4])
+            dias_original = row["dias_habiles"]
+            dias_final = data.dias_aprobados if (data.dias_aprobados and data.dias_aprobados != dias_original) else dias_original
+
+            # If Servicio Médico overrides dias, fix saldo before approving
+            if dias_final != dias_original:
+                await self._saldos.subtract_pendientes(
+                    str(row["tenant_id"]), str(row["user_id"]),
+                    str(row["tipo_licencia_id"]), anio, dias_original,
+                )
+                await self._saldos.add_pendientes(
+                    str(row["tenant_id"]), str(row["user_id"]),
+                    str(row["tipo_licencia_id"]), anio, dias_final,
+                )
+                await self._solicitudes.update({"id": str(solicitud_id), "dias_habiles": dias_final})
+                row = await self._solicitudes.get(solicitud_id) or row
+
+            # Final approval
+            updated = await self._solicitudes.update_estado(
+                solicitud_id, "aprobada",
+                revisado_por=str(current_user["id"]),
+                comentario_rrhh=data.comentario,
+            )
+            await self._saldos.approve(
+                str(row["tenant_id"]), str(row["user_id"]),
+                str(row["tipo_licencia_id"]), anio, dias_final,
+            )
+            await self._notify_wa(row, "aprobada", comentario=data.comentario)
+            asyncio.create_task(self._notify_email(row, "aprobada", comentario=data.comentario))
+        else:
+            # Advance to next step
+            next_paso = paso_actual_num + 1
+            updated = await self._solicitudes.update({
+                "id": str(solicitud_id),
+                "estado": "en_revision",
+                "paso_actual": next_paso,
+            })
+            # Auto-advance any 'solo_ver' steps at the new position
+            updated = await self._auto_advance_solo_ver(updated, paso_def, str(row["tenant_id"]))
+
+        return SolicitudLicenciaOut.from_row(updated)
+
+    async def rechazar_paso(
+        self,
+        solicitud_id: str | UUID,
+        current_user: dict,
+        data: RechazarPasoRequest,
+    ) -> SolicitudLicenciaOut:
+        if not self._aprobaciones or not self._flujos:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Módulo de flujos no disponible")
+
+        row = await self._solicitudes.get(solicitud_id)
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if str(row["tenant_id"]) != str(current_user["tenant_id"]):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if row["estado"] not in ("pendiente", "en_revision"):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"La solicitud no está en estado procesable (estado: {row['estado']})"
+            )
+        if not row.get("flujo_id"):
+            return await self.rechazar_solicitud(solicitud_id, current_user, RechazarSolicitudRequest(comentario=data.comentario))
+
+        paso_actual_num = row["paso_actual"]
+        aprobacion = await self._aprobaciones.get_current_paso(str(solicitud_id), paso_actual_num)
+        if not aprobacion:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paso de aprobación no encontrado")
+        if aprobacion["estado"] != "pendiente":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Este paso ya fue resuelto")
+
+        await self._check_paso_authorization(aprobacion, current_user, row)
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        await self._aprobaciones.update_paso(str(aprobacion["id"]), {
+            "estado": "rechazado",
+            "aprobado_por": str(current_user["id"]),
+            "comentario": data.comentario,
+            "fecha_decision": now.isoformat(),
+        })
+        # Mark remaining steps as omitido
+        await self._aprobaciones.mark_remaining_omitido(str(solicitud_id), paso_actual_num)
+
+        updated = await self._solicitudes.update_estado(
+            solicitud_id, "rechazada",
+            revisado_por=str(current_user["id"]),
+            comentario_rrhh=data.comentario,
+        )
+
+        anio = row["fecha_inicio"].year if isinstance(row["fecha_inicio"], date) else int(str(row["fecha_inicio"])[:4])
+        await self._saldos.subtract_pendientes(
+            str(row["tenant_id"]), str(row["user_id"]),
+            str(row["tipo_licencia_id"]), anio, row["dias_habiles"],
+        )
+        await self._notify_wa(row, "rechazada", comentario=data.comentario)
+        asyncio.create_task(self._notify_email(row, "rechazada", comentario=data.comentario))
+
+        return SolicitudLicenciaOut.from_row(updated)
+
+    async def _auto_advance_solo_ver(
+        self, solicitud_row: dict, pasos_def: list[dict], tenant_id: str
+    ) -> dict:
+        """After creating a solicitud with a flow, auto-advance any 'solo_ver' steps at the start."""
+        from datetime import datetime, timezone
+        paso_actual = solicitud_row.get("paso_actual", 1) or 1
+        total = len(pasos_def)
+
+        while paso_actual <= total:
+            paso = next((p for p in pasos_def if p["orden"] == paso_actual), None)
+            if not paso or paso.get("tipo_accion", "aprobar") != "solo_ver":
+                break
+            # Mark this step as aprobado (auto) and advance
+            aprobacion = await self._aprobaciones.get_current_paso(str(solicitud_row["id"]), paso_actual)
+            if aprobacion:
+                now = datetime.now(timezone.utc)
+                await self._aprobaciones.update_paso(str(aprobacion["id"]), {
+                    "estado": "aprobado",
+                    "comentario": "Paso de solo notificación — avance automático",
+                    "fecha_decision": now.isoformat(),
+                })
+            paso_actual += 1
+            if paso_actual > total:
+                # All remaining steps were solo_ver — fully approve
+                solicitud_row = await self._solicitudes.update_estado(
+                    solicitud_row["id"], "aprobada"
+                )
+                # Update saldo: move dias from pendientes to tomados
+                try:
+                    fi = solicitud_row.get("fecha_inicio")
+                    anio = fi.year if isinstance(fi, date) else int(str(fi)[:4])
+                    await self._saldos.approve(
+                        str(solicitud_row["tenant_id"]),
+                        str(solicitud_row["user_id"]),
+                        str(solicitud_row["tipo_licencia_id"]),
+                        anio,
+                        solicitud_row["dias_habiles"],
+                    )
+                except Exception as exc:
+                    logger.warning("Error actualizando saldo en auto_advance_solo_ver: %s", exc)
+            else:
+                solicitud_row = await self._solicitudes.update({
+                    "id": str(solicitud_row["id"]),
+                    "estado": "en_revision",
+                    "paso_actual": paso_actual,
+                })
+        return solicitud_row
+
+    async def derivar_paso(
+        self,
+        solicitud_id: str | UUID,
+        current_user: dict,
+        data: DerivarPasoRequest,
+    ) -> SolicitudLicenciaOut:
+        """Deriva el paso actual al siguiente sin aprobar ni rechazar."""
+        if not self._aprobaciones or not self._flujos:
+            raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Módulo de flujos no disponible")
+
+        row = await self._solicitudes.get(solicitud_id)
+        if not row:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if str(row["tenant_id"]) != str(current_user["tenant_id"]):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
+        if row["estado"] not in ("pendiente", "en_revision"):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"La solicitud no está en estado procesable (estado: {row['estado']})"
+            )
+        if not row.get("flujo_id"):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Esta solicitud no tiene un flujo de aprobación configurado"
+            )
+
+        paso_actual_num = row["paso_actual"]
+        aprobacion = await self._aprobaciones.get_current_paso(str(solicitud_id), paso_actual_num)
+        if not aprobacion:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paso de aprobación no encontrado")
+        if aprobacion["estado"] != "pendiente":
+            raise HTTPException(status.HTTP_409_CONFLICT, "Este paso ya fue resuelto")
+        if aprobacion.get("tipo_accion") != "derivar":
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Este paso no permite derivación — solo pasos con tipo_accion='derivar' pueden derivarse"
+            )
+
+        await self._check_paso_authorization(aprobacion, current_user, row)
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        await self._aprobaciones.update_paso(str(aprobacion["id"]), {
+            "estado": "derivado",
+            "aprobado_por": str(current_user["id"]),
+            "comentario": data.comentario,
+            "fecha_decision": now.isoformat(),
+        })
+
+        paso_def = await self._flujos.get_pasos(str(row["flujo_id"]))
+        total_pasos = len(paso_def)
+        is_last = paso_actual_num >= total_pasos
+
+        if is_last:
+            # Derivar en el último paso aprueba la solicitud
+            updated = await self._solicitudes.update_estado(
+                solicitud_id, "aprobada",
+                revisado_por=str(current_user["id"]),
+                comentario_rrhh=data.comentario,
+            )
+            anio = row["fecha_inicio"].year if isinstance(row["fecha_inicio"], date) else int(str(row["fecha_inicio"])[:4])
+            await self._saldos.approve(
+                str(row["tenant_id"]), str(row["user_id"]),
+                str(row["tipo_licencia_id"]), anio, row["dias_habiles"],
+            )
+        else:
+            next_paso = paso_actual_num + 1
+            updated = await self._solicitudes.update({
+                "id": str(solicitud_id),
+                "estado": "en_revision",
+                "paso_actual": next_paso,
+            })
+            # Auto-advance any next solo_ver steps
+            updated = await self._auto_advance_solo_ver(updated, paso_def, str(row["tenant_id"]))
+
+        return SolicitudLicenciaOut.from_row(updated)
+
+    async def _check_paso_authorization(
+        self, aprobacion: dict, current_user: dict, solicitud: dict
+    ) -> None:
+        """Raises 403 if the user is not authorized to act on this step."""
+        role = current_user["role"]
+
+        # Nobody can approve/reject a solo_ver step — it only observes
+        if aprobacion.get("tipo_accion") == "solo_ver":
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Este paso es solo de notificación — no requiere aprobación ni rechazo"
+            )
+
+        # admin_empresa can act on any non-solo_ver step
+        if role == "admin_empresa":
+            return
+
+        tipo = aprobacion["tipo_aprobador"]
+
+        if tipo == "rol":
+            if role != aprobacion.get("rol_aprobador"):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    f"Solo el rol '{aprobacion['rol_aprobador']}' puede actuar en este paso"
+                )
+        elif tipo == "departamento":
+            if role != "colaborador":
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Solo colaboradores del departamento aprobador pueden actuar en este paso"
+                )
+            # RN-06: cannot approve own request
+            if str(current_user["id"]) == str(solicitud["user_id"]):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "No podés aprobar tu propia solicitud"
+                )
+            if not self._colaboradores:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "Sin permisos")
+            perfil = await self._colaboradores.get_by_user_id(str(current_user["id"]))
+            if not perfil or str(perfil.get("departamento_id", "")) != str(aprobacion.get("departamento_id", "")):
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "No pertenecés al departamento aprobador de este paso"
+                )
 
     # ── WA notifications ─────────────────────────────────────────────────────
 
@@ -440,3 +1023,76 @@ class LicenciaService:
             logger.error("Meta API error notifying licencia result: %s", exc)
         except Exception as exc:
             logger.error("Error notifying licencia result: %s", exc)
+
+    async def _notify_email(self, solicitud: dict, resultado: str, comentario: str | None = None) -> None:
+        """Send email notification to collaborator. Best-effort — never raises."""
+        if not self._smtp:
+            return
+        try:
+            tenant_id = str(solicitud["tenant_id"])
+            user_id = str(solicitud["user_id"])
+
+            user = await self._users.get_by_id(user_id)
+            if not user or not user.get("email"):
+                return
+
+            cfg = await self._smtp.get_config(tenant_id)
+            if not cfg:
+                return
+
+            nombre = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Colaborador"
+            tipo_info = solicitud.get("tipos_licencia") or {}
+            tipo_nombre = tipo_info.get("nombre", "Licencia") if isinstance(tipo_info, dict) else "Licencia"
+            fecha_inicio = str(solicitud["fecha_inicio"])
+            fecha_fin = str(solicitud["fecha_fin"])
+            dias = solicitud.get("dias_habiles", "")
+
+            if resultado == "creada":
+                subject = "Tu solicitud de licencia fue recibida — NUMI"
+                html = f"""
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                  <h2 style="color:#e87d50">Solicitud recibida</h2>
+                  <p>Hola {nombre}, recibimos tu solicitud de <strong>{tipo_nombre}</strong>.</p>
+                  <ul style="line-height:2">
+                    <li>Fecha inicio: <strong>{fecha_inicio}</strong></li>
+                    <li>Fecha fin: <strong>{fecha_fin}</strong></li>
+                    <li>Días hábiles: <strong>{dias}</strong></li>
+                  </ul>
+                  <p style="color:#475569">Tu solicitud está siendo revisada. Te notificaremos cuando tenga una resolución.</p>
+                </div>
+                """
+            elif resultado == "aprobada":
+                subject = "Tu licencia fue aprobada — NUMI"
+                extra = f"<p><strong>Comentario:</strong> {comentario}</p>" if comentario else ""
+                html = f"""
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                  <h2 style="color:#22c55e">Licencia aprobada ✓</h2>
+                  <p>Hola {nombre}, tu solicitud de <strong>{tipo_nombre}</strong> fue <strong>aprobada</strong>.</p>
+                  <ul style="line-height:2">
+                    <li>Fecha inicio: <strong>{fecha_inicio}</strong></li>
+                    <li>Fecha fin: <strong>{fecha_fin}</strong></li>
+                    <li>Días hábiles: <strong>{dias}</strong></li>
+                  </ul>
+                  {extra}
+                </div>
+                """
+            elif resultado == "rechazada":
+                motivo = comentario or "Sin motivo especificado"
+                subject = "Tu licencia fue rechazada — NUMI"
+                html = f"""
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                  <h2 style="color:#ef4444">Licencia rechazada</h2>
+                  <p>Hola {nombre}, tu solicitud de <strong>{tipo_nombre}</strong> fue <strong>rechazada</strong>.</p>
+                  <ul style="line-height:2">
+                    <li>Fecha inicio: <strong>{fecha_inicio}</strong></li>
+                    <li>Fecha fin: <strong>{fecha_fin}</strong></li>
+                  </ul>
+                  <p><strong>Motivo:</strong> {motivo}</p>
+                </div>
+                """
+            else:
+                return
+
+            await self._smtp._send(cfg, user["email"], subject, html)
+        except Exception as exc:
+            logger.error("Error sending email notification for licencia: %s", exc)

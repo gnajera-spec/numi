@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import {
   MessageSquare, Plus, X, Send, RefreshCw, Paperclip, Trash2,
   Bold, Italic, Underline, List, ListOrdered, FileText, Search, UserCheck,
-  BarChart2, CheckCircle2, Eye, Clock,
+  BarChart2, CheckCircle2, Eye, Clock, Mail,
 } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
@@ -67,6 +67,14 @@ function RichTextEditor({ onChange, maxLength = 5000, placeholder = "Texto de la
     if (document.queryCommandState("italic")) formats.add("italic");
     if (document.queryCommandState("underline")) formats.add("underline");
     setActiveFormats(formats);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    // Strip HTML and images — only paste plain text to avoid base64 bloat
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
+    handleInput();
   };
 
   const exec = (cmd: string, value?: string) => {
@@ -141,6 +149,7 @@ function RichTextEditor({ onChange, maxLength = 5000, placeholder = "Texto de la
         contentEditable
         suppressContentEditableWarning
         onInput={handleInput}
+        onPaste={handlePaste}
         onKeyUp={updateActiveFormats}
         onMouseUp={updateActiveFormats}
         className="px-3 py-2.5 text-sm outline-none min-h-[160px] max-h-[300px] overflow-y-auto"
@@ -494,7 +503,7 @@ function NuevaComunicacionModal({ onClose, onCreated }: NuevaComunicacionModalPr
                             {u.first_name} {u.last_name}
                           </span>
                           <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
-                            {u.email ?? (u as unknown as Record<string, string>).correo ?? ""}
+                            {u.email}
                           </span>
                         </button>
                       </li>
@@ -599,6 +608,120 @@ function NuevaComunicacionModal({ onClose, onCreated }: NuevaComunicacionModalPr
   );
 }
 
+// ── VerComunicacionModal ──────────────────────────────────────────────────────
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function VerComunicacionModal({ com, onClose }: { com: ComunicacionAdmin; onClose: () => void }) {
+  const adjuntos = com.comunicacion_adjuntos ?? [];
+  const badge = estadoBadge[com.estado as EstadoComunicacion];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.45)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-2xl rounded-xl border flex flex-col overflow-hidden"
+        style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)", maxHeight: "90vh" }}>
+
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-4 border-b shrink-0"
+          style={{ borderColor: "var(--color-surface-border)" }}>
+          <div className="flex items-start gap-3 min-w-0">
+            <MessageSquare size={18} style={{ color: "var(--color-primary)", flexShrink: 0, marginTop: 2 }} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold" style={{ color: "var(--color-content-primary)", wordBreak: "break-word" }}>{com.asunto}</p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {badge && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: badge.bg, color: badge.color }}>
+                    {badge.label}
+                  </span>
+                )}
+                <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
+                  {segmentoLabel[com.tipo_segmento] ?? com.tipo_segmento}
+                </span>
+                {com.requiere_confirmacion && (
+                  <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>· Requiere confirmación</span>
+                )}
+                {com.total_destinatarios !== undefined && (
+                  <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>· {com.total_destinatarios} destinatarios</span>
+                )}
+                <span className="text-xs" style={{ color: "var(--color-content-disabled)" }}>
+                  {new Date(com.created_at).toLocaleDateString("es-AR", { dateStyle: "long" })}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="shrink-0 ml-3">
+            <X size={18} style={{ color: "var(--color-content-secondary)" }} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+          {/* Cuerpo */}
+          <div
+            style={{
+              color: "var(--color-content-primary)",
+              fontSize: 14,
+              lineHeight: 1.7,
+              wordBreak: "break-word",
+              overflowWrap: "break-word",
+              whiteSpace: "pre-wrap",
+            }}
+            dangerouslySetInnerHTML={{ __html: com.cuerpo }}
+          />
+
+          {/* Adjuntos */}
+          {adjuntos.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--color-content-secondary)" }}>
+                Archivos adjuntos ({adjuntos.length})
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {adjuntos.map((adj) => (
+                  <a
+                    key={adj.id}
+                    href={adj.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 px-4 py-2.5 rounded-lg border transition-colors hover:bg-gray-50"
+                    style={{ borderColor: "var(--color-surface-border)", textDecoration: "none" }}
+                  >
+                    <FileText size={15} style={{ color: "var(--color-primary)", flexShrink: 0 }} />
+                    <span className="flex-1 text-sm truncate" style={{ color: "var(--color-content-primary)" }}>
+                      {adj.filename}
+                    </span>
+                    {adj.file_size_bytes !== undefined && (
+                      <span className="text-xs shrink-0" style={{ color: "var(--color-content-disabled)" }}>
+                        {formatBytes(adj.file_size_bytes)}
+                      </span>
+                    )}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t flex justify-end shrink-0"
+          style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-empty)" }}>
+          <button onClick={onClose}
+            className="text-xs font-medium px-4 py-1.5 rounded-lg border"
+            style={{ borderColor: "var(--color-surface-border)", color: "var(--color-content-secondary)" }}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── SeguimientoModal ──────────────────────────────────────────────────────────
 
 const estadoDestinatarioBadge: Record<string, { label: string; color: string }> = {
@@ -613,12 +736,18 @@ function fmt(d: string | undefined) {
   return new Date(d).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
 }
 
+type ActiveFilter = 'todos' | 'sin_leer' | 'leidos' | 'confirmados';
+
 function SeguimientoModal({ com, onClose }: { com: ComunicacionAdmin; onClose: () => void }) {
   const [detail, setDetail] = useState<ComunicacionAdmin | null>(null);
   const [destinatarios, setDestinatarios] = useState<DestinatarioTracking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('todos');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -634,15 +763,65 @@ function SeguimientoModal({ com, onClose }: { com: ComunicacionAdmin; onClose: (
   const total = m?.enviados ?? 0;
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
 
-  const filtered = destinatarios.filter((d) =>
+  const byFilter = destinatarios.filter(d => {
+    if (activeFilter === 'sin_leer')    return !d.leido_at;
+    if (activeFilter === 'leidos')      return !!d.leido_at;
+    if (activeFilter === 'confirmados') return !!d.confirmado_at;
+    return true;
+  });
+  const filtered = byFilter.filter((d) =>
     !search || d.nombre.toLowerCase().includes(search.toLowerCase()) || d.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  const allSelected = filtered.length > 0 && filtered.every(d => selectedIds.has(d.user_id));
+  const toggleAll = () => {
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map(d => d.user_id)));
+  };
+  const toggleOne = (uid: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(uid) ? next.delete(uid) : next.add(uid);
+      return next;
+    });
+  };
+
+  const setFilter = (f: ActiveFilter) => { setActiveFilter(f); setSelectedIds(new Set()); setActionMsg(null); };
+
+  const handleReenviar = async (userIds: string[]) => {
+    const key = userIds.length === 1 ? userIds[0] : 'bulk';
+    setActionLoading(key);
+    try {
+      const res = await adminComunicacionesService.reenviar(com.id, userIds);
+      setActionMsg(`Re-enviado a ${res.reenviados} destinatario${res.reenviados !== 1 ? 's' : ''}`);
+      setSelectedIds(new Set());
+    } catch { setActionMsg("Error al reenviar"); }
+    finally { setActionLoading(null); }
+  };
+
+  const handleEmailRecordatorio = async (userId: string) => {
+    setActionLoading(`email_${userId}`);
+    try {
+      const res = await adminComunicacionesService.recordatorioEmail(com.id, [userId]);
+      setActionMsg(`Email enviado a ${res.enviados} destinatario`);
+    } catch { setActionMsg("Error al enviar email"); }
+    finally { setActionLoading(null); }
+  };
+
+  const cards: { key: ActiveFilter; icon: React.ElementType; label: string; value: number; p: number }[] = m ? [
+    { key: 'todos',       icon: Send,         label: "Enviados",    value: m.enviados,              p: 100 },
+    { key: 'leidos',      icon: Eye,          label: "Leídos",      value: m.leidos,                p: pct(m.leidos) },
+    { key: 'confirmados', icon: CheckCircle2, label: "Confirmados", value: m.confirmados,           p: pct(m.confirmados) },
+    { key: 'sin_leer',    icon: Clock,        label: "Sin leer",    value: m.enviados - m.leidos,   p: pct(m.enviados - m.leidos) },
+  ] : [];
+
+  const showCheckboxes = activeFilter === 'sin_leer';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-2xl rounded-xl border flex flex-col overflow-hidden"
-        style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)", height: "min(92vh, 680px)" }}>
+        style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)", height: "min(92vh, 700px)" }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0"
@@ -661,42 +840,63 @@ function SeguimientoModal({ com, onClose }: { com: ComunicacionAdmin; onClose: (
 
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
           {error && <ErrorBanner message={error} />}
+          {actionMsg && (
+            <div className="rounded-lg px-4 py-2 text-xs font-medium flex items-center gap-2"
+              style={{ background: "var(--color-state-present-bg, #f0fdf4)", color: "var(--color-state-present)" }}>
+              <CheckCircle2 size={13} /> {actionMsg}
+            </div>
+          )}
 
           {loading ? (
             <div className="flex justify-center py-12"><Spinner /></div>
           ) : (
             <>
-              {/* KPI cards */}
+              {/* KPI cards — clickeables */}
               {m && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { icon: Send,         label: "Enviados",   value: m.enviados,   pct: 100 },
-                    { icon: Eye,          label: "Leídos",     value: m.leidos,     pct: pct(m.leidos) },
-                    { icon: CheckCircle2, label: "Confirmados",value: m.confirmados,pct: pct(m.confirmados) },
-                    { icon: Clock,        label: "Sin leer",   value: m.enviados - m.leidos, pct: pct(m.enviados - m.leidos) },
-                  ].map(({ icon: Icon, label, value, pct: p }) => (
-                    <div key={label} className="rounded-xl border p-3 flex flex-col gap-1"
-                      style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-empty)" }}>
-                      <div className="flex items-center gap-1.5">
-                        <Icon size={13} style={{ color: "var(--color-content-secondary)" }} />
-                        <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>{label}</span>
-                      </div>
-                      <p className="text-2xl font-bold" style={{ color: "var(--color-content-primary)" }}>{value}</p>
-                      <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ background: "var(--color-surface-border)" }}>
-                        <div className="h-full rounded-full transition-all" style={{ width: `${p}%`, background: "var(--color-primary)" }} />
-                      </div>
-                      <p className="text-xs" style={{ color: "var(--color-content-disabled)" }}>{p}%</p>
-                    </div>
-                  ))}
+                  {cards.map(({ key, icon: Icon, label, value, p }) => {
+                    const isActive = activeFilter === key;
+                    return (
+                      <button key={key} onClick={() => setFilter(key)}
+                        className="rounded-xl border p-3 flex flex-col gap-1 text-left transition-all"
+                        style={{
+                          borderColor: isActive ? "var(--color-primary)" : "var(--color-surface-border)",
+                          background: isActive ? "var(--color-primary-soft, #fff7f3)" : "var(--color-surface-empty)",
+                          cursor: "pointer",
+                        }}>
+                        <div className="flex items-center gap-1.5">
+                          <Icon size={13} style={{ color: isActive ? "var(--color-primary)" : "var(--color-content-secondary)" }} />
+                          <span className="text-xs" style={{ color: isActive ? "var(--color-primary)" : "var(--color-content-secondary)" }}>{label}</span>
+                        </div>
+                        <p className="text-2xl font-bold" style={{ color: "var(--color-content-primary)" }}>{value}</p>
+                        <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ background: "var(--color-surface-border)" }}>
+                          <div className="h-full rounded-full transition-all" style={{ width: `${p}%`, background: isActive ? "var(--color-primary)" : "var(--color-content-disabled)" }} />
+                        </div>
+                        <p className="text-xs" style={{ color: "var(--color-content-disabled)" }}>{p}%</p>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
               {/* Recipient table */}
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
-                    Destinatarios ({destinatarios.length})
-                  </p>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+                      Destinatarios ({filtered.length}{activeFilter !== 'todos' ? ` de ${destinatarios.length}` : ''})
+                    </p>
+                    {showCheckboxes && selectedIds.size > 0 && (
+                      <button
+                        disabled={actionLoading === 'bulk'}
+                        onClick={() => handleReenviar([...selectedIds])}
+                        className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                        style={{ background: "var(--color-primary)", color: "#fff" }}>
+                        <Send size={11} />
+                        {actionLoading === 'bulk' ? 'Enviando…' : `Re-enviar seleccionados (${selectedIds.size})`}
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
                       style={{ color: "var(--color-content-disabled)" }} />
@@ -714,19 +914,34 @@ function SeguimientoModal({ com, onClose }: { com: ComunicacionAdmin; onClose: (
                     <table className="w-full text-xs">
                       <thead>
                         <tr style={{ background: "var(--color-surface-empty)", borderBottom: `1px solid var(--color-surface-border)` }}>
+                          {showCheckboxes && (
+                            <th className="px-3 py-2.5 w-8">
+                              <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" />
+                            </th>
+                          )}
                           <th className="text-left px-4 py-2.5 font-medium" style={{ color: "var(--color-content-secondary)" }}>Colaborador</th>
                           <th className="text-left px-3 py-2.5 font-medium" style={{ color: "var(--color-content-secondary)" }}>Estado</th>
                           <th className="text-left px-3 py-2.5 font-medium hidden sm:table-cell" style={{ color: "var(--color-content-secondary)" }}>Leído</th>
                           {com.requiere_confirmacion && (
                             <th className="text-left px-3 py-2.5 font-medium hidden sm:table-cell" style={{ color: "var(--color-content-secondary)" }}>Confirmado</th>
                           )}
+                          <th className="px-3 py-2.5" />
                         </tr>
                       </thead>
                       <tbody>
                         {filtered.map((d, i) => {
                           const badge = estadoDestinatarioBadge[d.estado] ?? { label: d.estado, color: "var(--color-content-secondary)" };
+                          const sinLeer = !d.leido_at;
+                          const sinConfirmar = d.leido_at && !d.confirmado_at && (detail?.requiere_confirmacion ?? com.requiere_confirmacion);
+                          const isLoadingRow = actionLoading === d.user_id;
+                          const isLoadingEmail = actionLoading === `email_${d.user_id}`;
                           return (
                             <tr key={d.id} style={{ borderTop: i > 0 ? `1px solid var(--color-surface-border)` : undefined }}>
+                              {showCheckboxes && (
+                                <td className="px-3 py-3">
+                                  <input type="checkbox" checked={selectedIds.has(d.user_id)} onChange={() => toggleOne(d.user_id)} className="cursor-pointer" />
+                                </td>
+                              )}
                               <td className="px-4 py-3">
                                 <p className="font-medium" style={{ color: "var(--color-content-primary)" }}>{d.nombre || "—"}</p>
                                 <p style={{ color: "var(--color-content-secondary)" }}>{d.email}</p>
@@ -742,6 +957,30 @@ function SeguimientoModal({ com, onClose }: { com: ComunicacionAdmin; onClose: (
                                   {fmt(d.confirmado_at)}
                                 </td>
                               )}
+                              <td className="px-3 py-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {sinLeer && (
+                                    <button
+                                      disabled={!!actionLoading}
+                                      onClick={() => handleReenviar([d.user_id])}
+                                      className="text-xs px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 disabled:opacity-40"
+                                      style={{ background: "var(--color-surface-empty)", border: "1px solid var(--color-surface-border)", color: "var(--color-content-primary)" }}>
+                                      <Send size={10} />
+                                      {isLoadingRow ? 'Enviando…' : 'Re-enviar'}
+                                    </button>
+                                  )}
+                                  {sinConfirmar && (
+                                    <button
+                                      disabled={!!actionLoading}
+                                      onClick={() => handleEmailRecordatorio(d.user_id)}
+                                      className="text-xs px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 disabled:opacity-40"
+                                      style={{ background: "var(--color-primary-xlight)", border: "1px solid var(--color-primary)", color: "var(--color-primary)" }}>
+                                      <Mail size={10} />
+                                      {isLoadingEmail ? 'Enviando…' : 'Email recordatorio'}
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
@@ -770,6 +1009,7 @@ export function AdminComunicacionesPage() {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [tracking, setTracking] = useState<ComunicacionAdmin | null>(null);
+  const [viewing, setViewing] = useState<ComunicacionAdmin | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -895,15 +1135,6 @@ export function AdminComunicacionesPage() {
                       )}
                     </div>
 
-                    {/* Cuerpo preview — strip HTML */}
-                    <p
-                      className="text-xs line-clamp-2"
-                      style={{ color: "var(--color-content-secondary)" }}
-                      dangerouslySetInnerHTML={{
-                        __html: com.cuerpo.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
-                      }}
-                    />
-
                     {/* Meta */}
                     <div className="flex items-center gap-3 mt-1.5 text-xs" style={{ color: "var(--color-content-secondary)" }}>
                       <span>{segmentoLabel[com.tipo_segmento] ?? com.tipo_segmento}</span>
@@ -917,6 +1148,14 @@ export function AdminComunicacionesPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setViewing(com)}
+                      className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
+                      style={{ color: "var(--color-content-secondary)", borderColor: "var(--color-surface-border)" }}
+                    >
+                      <Eye size={13} />
+                      Ver
+                    </button>
                     {(com.estado === "enviado" || com.estado === "enviando") && (
                       <button
                         onClick={() => setTracking(com)}
@@ -984,6 +1223,9 @@ export function AdminComunicacionesPage() {
       )}
       {tracking && (
         <SeguimientoModal com={tracking} onClose={() => setTracking(null)} />
+      )}
+      {viewing && (
+        <VerComunicacionModal com={viewing} onClose={() => setViewing(null)} />
       )}
     </AdminLayout>
   );

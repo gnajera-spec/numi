@@ -1,268 +1,196 @@
-# HRConnect
+# CLAUDE.md
 
-> **Softlink** — Plataforma HR multi-empresa con canal WhatsApp como interfaz principal para colaboradores
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+> **Softlink — HRConnect:** Plataforma HR multi-empresa con canal WhatsApp como interfaz principal para colaboradores.
 > Stack: FastAPI + React 18 + Supabase PostgreSQL | Deploy: Render
 
 ---
 
-## ⚡ Antes de implementar cualquier cosa
+## Antes de implementar cualquier cosa
 
-1. Leer el MD correspondiente en `docs/` (ver tabla en sección Documentación)
-2. Verificar que el endpoint esté definido en `docs/API_SPEC.md`
-3. Verificar que el schema esté en `docs/DATA_MODEL.md`
-4. Si la tarea toca UI: leer `docs/DESIGN_SYSTEM.md` antes de escribir cualquier componente
-5. Implementar con tests
-6. Correr tests y confirmar que pasan
-7. Actualizar `CLAUDE_GUIDE.md` con lo que se completó
+1. Leer `CLAUDE_GUIDE.md` — estado actual del proyecto, decisiones y próximos pasos
+2. Verificar que el endpoint esté en `docs/API_SPEC.md` y el schema en `docs/DATA_MODEL.md`
+3. Para UI: leer `docs/DESIGN_SYSTEM.md` antes de escribir cualquier componente
+4. Implementar con tests; correr tests y confirmar que pasan
+5. Actualizar `CLAUDE_GUIDE.md` al cerrar la sesión
 
 **No cambiar arquitectura, librerías core, schema o mecanismo de auth sin preguntar primero.**
 
 ---
 
-## Stack
-
-| Capa       | Tecnología                                      |
-|------------|-------------------------------------------------|
-| Backend    | FastAPI + Uvicorn                               |
-| Base de datos | Supabase (PostgreSQL) via `supabase-py` AsyncClient |
-| Frontend   | React 18 + TypeScript + Vite + Tailwind         |
-| Auth       | JWT con PyJWT                                   |
-| Config     | pydantic-settings                               |
-| Tests      | pytest + pytest-asyncio + pytest-mock           |
-| Deploy     | Render (backend + frontend estáticos)           |
-
----
-
-## Entorno de desarrollo
+## Comandos de desarrollo
 
 ```bash
 # Backend
 cd backend && source .venv/bin/activate
-uvicorn main:app --reload
-# → http://localhost:8000/docs
+uvicorn main:app --reload --port 8000
+# Nota: uvicorn --reload NO detecta cambios en .env — reiniciar manualmente si se cambia .env
 
-# Frontend
-cd frontend && npm run dev
-# → http://localhost:5173
-
-# Tests
-cd backend && pytest              # todos
-cd backend && pytest tests/routers/  # solo routers
+# Frontend (el servidor corre desde /frontend en el proyecto principal, no desde worktrees)
+cd frontend && npm run dev          # dev server → http://localhost:5580
+npm run build                       # tsc -b && vite build
+npm run lint                        # ESLint
+node_modules/.bin/tsc --noEmit     # solo chequeo de tipos (no hay tsc global)
 ```
 
-Variables de entorno necesarias en `.env` del backend:
+```bash
+# Tests — backend
+cd backend && pytest                                                        # todos
+cd backend && pytest tests/routers/                                        # solo routers
+cd backend && pytest tests/services/test_auth_service.py                   # un archivo
+cd backend && pytest tests/services/test_auth_service.py::test_login_ok   # un test específico
+cd backend && pytest -v --tb=short                                         # verbose + traceback corto
+```
+
+```bash
+# Supabase CLI
+supabase migration new nombre_descriptivo   # nueva migración
+supabase db reset                           # aplicar migraciones en local
+supabase db push                            # aplicar en producción
+```
+
+---
+
+## Variables de entorno — backend (`backend/.env`)
+
 ```
 APP_ENV=development
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-SECRET_KEY=dev-secret-key
-ALLOWED_ORIGINS=http://localhost:5173
-# [agregar variables específicas del proyecto]
+SECRET_KEY=                   # mín. 32 chars — firma JWTs (HS256)
+ENCRYPTION_KEY=               # 64 hex chars (32 bytes AES-256) — datos médicos + WA access_token
+ALLOWED_ORIGINS=["http://localhost:5173","http://localhost:5580"]
+META_VERIFY_TOKEN=            # token para verificar webhook GET /whatsapp/webhook
+META_APP_SECRET=              # App Secret de Meta para validar firma HMAC-SHA256 de webhooks
 ```
 
 ---
 
-## Estructura de carpetas
+## Arquitectura general
+
+### Capas backend (orden estricto: router → service → repository → DB)
 
 ```
-[proyecto]/                          # Raíz del repositorio
-│
-├── CLAUDE.md                        # ← Claude lo lee automático al iniciar sesión
-├── CLAUDE_GUIDE.md                  # Estado vivo del proyecto (fases, decisiones, log)
-│
-├── .claude/
-│   └── settings.json                # Permisos de Claude Code — herramientas sin confirmación
-│
-├── docs/                            # Documentación técnica — leer antes de implementar
-│   ├── API_SPEC.md                  # Contratos de endpoints (request/response)
-│   ├── DATA_MODEL.md                # Tablas, columnas, relaciones, índices
-│   ├── DESIGN_SYSTEM.md             # Tokens de color, componentes, UX patterns
-│   ├── ARCHITECTURE.md              # Flujo general del sistema
-│   └── requirements/                # Requerimientos por módulo
-│       ├── README.md                # Índice y estado de todos los requerimientos
-│       ├── REQ_01_auth.md           # Requerimientos de autenticación
-│       └── REQ_XX_[modulo].md       # Un archivo por módulo funcional
-│
-├── backend/                         # API FastAPI
-│   ├── .env                         # ← NO commitear (está en .gitignore)
-│   ├── .env.example                 # Variables requeridas sin valores — sí commitear
-│   ├── main.py                      # Entry point — registra routers y handlers
-│   └── app/
-│       ├── core/
-│       │   ├── config.py            # Settings con pydantic-settings
-│       │   └── exception_handlers.py# Handlers globales de errores
-│       ├── db/
-│       │   └── supabase.py          # AsyncClient singleton
-│       ├── dependencies/            # Factory functions para inyección de dependencias
-│       ├── schemas/                 # Pydantic schemas — request y response
-│       ├── repositories/            # Acceso a datos — única capa con AsyncClient
-│       ├── services/                # Lógica de negocio — orquesta repositorios
-│       └── routers/                 # Endpoints FastAPI — delegan a services
-│
-├── supabase/
-│   └── migrations/                  # Historial completo del schema — Supabase CLI
-│
-├── tests/                           # Tests del backend
-│   ├── conftest.py                  # Fixtures globales
-│   ├── routers/
-│   ├── services/
-│   └── repositories/
-│
-└── frontend/                        # App React
-    ├── .env                         # ← NO commitear
-    ├── .env.example                 # Variables VITE_ requeridas sin valores
-    └── src/
-        ├── lib/
-        │   └── apiClient.ts         # Cliente base con interceptores (401, 403, red)
-        ├── services/                # Llamadas a API — nunca desde componentes
-        ├── components/              # Componentes reutilizables
-        └── pages/                   # Páginas — una por ruta principal
+routers/     Endpoints FastAPI. Solo validan entrada, delegan a services, retornan schemas.
+services/    Lógica de negocio. Orquestan múltiples repositories. No tocan DB directamente.
+repositories/ Única capa con AsyncClient. Un archivo por entidad de DB.
+schemas/     Pydantic — request y response. Nunca usados como modelos de DB.
 ```
 
----
-
-## Reglas de código — Backend
-
-### 1. Siempre `async def`
-Toda función en routers, services y repositories es asíncrona.
-Si una librería no soporta async (ej: `requests`), reemplazarla por su equivalente (`httpx`).
-
-### 2. Config centralizada con pydantic-settings
+**Patrón factory en routers** — cada router define una función privada que construye el servicio con sus repos inyectados:
 
 ```python
-# ✅ Correcto
-from app.core.config import get_settings
-settings: Settings = Depends(get_settings)
+def _svc(db: AsyncClient = Depends(get_supabase)) -> AuthService:
+    return AuthService(UserRepository(db), TokenRepository(db))
 
-# ❌ Prohibido
-import os
-url = os.environ["SUPABASE_URL"]
+@router.post("/login")
+async def login(data: LoginRequest, svc: AuthService = Depends(_svc)):
+    return await svc.login(data)
 ```
 
-### 3. Pydantic schemas en todo request/response
-Nunca `dict` crudo. Schemas en `app/schemas/`. Un schema nunca se usa como modelo de DB ni al revés.
-Los contratos de request/response (campos, tipos, validaciones) están definidos en `docs/API_SPEC.md` — implementar exactamente lo que dice, sin agregar ni quitar campos.
+### Auth y JWT
 
-### 4. HTTP status codes correctos
+- Tokens HS256 firmados con `SECRET_KEY`. Access: 8h. Refresh: 30d. MFA token: 5 min.
+- **El rol viene del JWT, no de la DB.** En `get_current_user` el campo `role` del JWT sobreescribe el de la DB (`user["role"] = payload["role"]`). Esto permite `switch_role` sin mutar la DB.
+- Refresh tokens: el valor plano nunca se almacena — solo su hash SHA-256.
+- `require_role(*roles)` depende de `get_current_user`; FastAPI encadena automáticamente.
 
-| Situación              | Código |
-|------------------------|--------|
-| No encontrado          | `404`  |
-| No autenticado         | `401`  |
-| Sin permisos           | `403`  |
-| Conflicto (duplicado)  | `409`  |
-| Datos inválidos        | `422`  |
-| Creación exitosa       | `201`  |
-| Error interno          | `500`  |
+### Supabase AsyncClient
 
-### 5. Exception handler global
-Registrado en `main.py`. Nunca exponer stack traces al cliente. Loguear internamente, responder genérico.
-
-### 6. Supabase — AsyncClient + patrón repositorio
-
-- Usar siempre `AsyncClient` de `supabase._async.client` — el cliente sync bloquea el event loop
-- Cada entidad tiene su clase repositorio en `app/repositories/`
-- El repositorio recibe el cliente en `__init__` y expone métodos async
-- Validar `response.data` antes de usarlo — nunca asumir que viene data
-- `SUPABASE_SERVICE_ROLE_KEY` solo en backend, nunca en variables `VITE_`
-
-### 7. Migraciones con Supabase CLI
-
-```bash
-supabase migration new nombre_descriptivo
-supabase db reset        # iterar en local
-supabase db push         # aplicar en producción
+```python
+# app/db/supabase.py — singleton global
+async def get_supabase() -> AsyncClient:
+    global _client
+    if _client is None:
+        _client = await create_client(url, key)
+    return _client
 ```
 
-Toda tabla nueva debe tener RLS habilitado desde la migración:
-```sql
-alter table mi_tabla enable row level security;
-```
+- Siempre `AsyncClient` de `supabase._async.client` — el sync bloquea el event loop.
+- Siempre validar `response.data` antes de usarlo; nunca asumir que hay datos.
+- `SUPABASE_SERVICE_ROLE_KEY` solo en backend, nunca en variables `VITE_`.
+
+### Multi-tenant
+
+- Toda tabla de datos tiene `tenant_id`. El backend **siempre** lo extrae del JWT, nunca del body o query.
+- RLS habilitado en toda tabla nueva: `alter table mi_tabla enable row level security;`
+
+### Frontend — routing y roles
+
+Dos aplicaciones separadas con guards propios:
+
+| Path prefix | Guard | Roles permitidos |
+|---|---|---|
+| `/employee/*` | `ProtectedRoute` | cualquier usuario autenticado |
+| `/admin/*` | `AdminProtectedRoute` | `rrhh`, `admin_empresa`, `super_admin`, `servicio_medico` |
+| `/superadmin/*` | propio | `super_admin` |
+
+El sidebar de `AdminLayout` adapta los ítems visibles por rol:
+- `rrhh` → menú operativo completo
+- `admin_empresa` → Usuarios + Organización + Configuración
+- `super_admin` → todo + médico + configuración
+- `servicio_medico` → solo fichas / accidentes / reportes médicos
+
+Las llamadas a la API van **solo** desde `src/services/`. Los componentes nunca hacen fetch directamente. `src/lib/apiClient.ts` maneja 401 redirigiendo a `/admin/login` o `/employee/login` según el path activo.
 
 ---
 
-## Reglas de código — Frontend
+## Reglas de código
 
-### TypeScript estricto — prohibido `any`
-`tsconfig.json` con `"strict": true`. Si el tipo es genuinamente desconocido: usar `unknown` + type guard.
+### Backend
 
-### Llamadas a API solo desde `src/services/`
-Los componentes nunca llaman APIs directamente.
-El cliente base con interceptores va en `src/lib/apiClient.ts` (maneja 401, 403, errores de red).
+- Toda función en routers, services y repositories es `async def`.
+- Config solo vía pydantic-settings: `from app.core.config import get_settings` + `Depends(get_settings)`. Prohibido `os.environ`.
+- HTTP status codes: 201 creación, 401 no autenticado, 403 sin permisos, 404 no encontrado, 409 conflicto, 422 datos inválidos.
+- El exception handler global en `main.py` nunca expone stack traces al cliente.
 
-### Siempre loading + error + data
-Ningún componente con fetch puede quedar sin estado de carga y sin error visible.
-Los tres estados siempre presentes: `loading` / `error` / `data`.
+### Tests
 
-### Design System y UX
-Para cualquier tarea de UI, leer primero: `docs/DESIGN_SYSTEM.md`
+Nombre: `test_<qué_hace>_<condición>_<resultado_esperado>`  
+Patrón: Arrange / Act / Assert  
+**pytest-asyncio mode: STRICT** — todos los tests async requieren `@pytest.mark.asyncio`  
+UUIDs en fixtures: usar formato real (`"00000000-0000-0000-0000-000000000001"`), no strings arbitrarios.
 
-Cubre: tokens de color, tipografía, componentes base, patrones de layout, estados (loading/error/empty), accesibilidad y responsive breakpoints.
+| Capa | Qué mockear |
+|---|---|
+| Routers | Repos via `app.dependency_overrides` |
+| Services | Repositorios (inyectados en `__init__`) |
+| Repositories | Supabase client con `AsyncMock` |
 
----
+### Frontend
 
-## Git y GitHub
-
-- Repositorio: `https://github.com/gnajera-spec/numi`
-- Branch principal: `main` — **nunca pushear directo**
-- Flujo obligatorio: `feature branch → PR → merge`
-
-Naming de branches:
-```
-feat/descripcion-corta
-fix/descripcion-corta
-refactor/descripcion-corta
-chore/descripcion-corta
-```
-
-Antes de abrir un PR: correr tests, confirmar que el build pasa, y verificar que no hay archivos `.env` ni secrets en el diff.
+- TypeScript estricto (`"strict": true`). Prohibido `any`; usar `unknown` + type guard si necesario.
+- Todo componente con fetch expone los tres estados: `loading` / `error` / `data`.
+- Para UI, leer `docs/DESIGN_SYSTEM.md` — define tokens CSS (`var(--color-*)`, `var(--shadow-*)`), componentes base y patrones de layout.
 
 ---
 
-## Reglas generales
+## Git
 
-- **Nunca commitear `.env`** — si se commitea un secret, rotarlo inmediatamente
-- **Commits semánticos en inglés:** `feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`, `perf:`
-- Un commit por unidad de trabajo — no mezclar features con fixes
-
----
-
-## Tests — Convenciones
-
-Nombre: `test_<qué_hace>_<condición>_<resultado_esperado>`
-Patrón: **Arrange / Act / Assert** siempre
-
-| Capa        | Qué mockear                                      |
-|-------------|--------------------------------------------------|
-| Routers     | Repos via `dependency_overrides`                 |
-| Services    | Repositorios                                     |
-| Repositories | Supabase client con `AsyncMock`                 |
-
-Unit tests **nunca tocan la DB real**.
-
----
-
-## Documentación del proyecto
-
-Leer ANTES de implementar:
-
-| Archivo                          | Contenido                                        |
-|----------------------------------|--------------------------------------------------|
-| `docs/requirements/README.md`    | Índice de requerimientos y estado actual         |
-| `docs/requirements/REQ_XX_*.md`  | Requerimientos del módulo en el que estás        |
-| `docs/ARCHITECTURE.md`           | Estructura y flujo general                       |
-| `docs/DATA_MODEL.md`             | Tablas, columnas, relaciones                     |
-| `docs/API_SPEC.md`               | Endpoints, request/response                      |
-| `docs/IMPLEMENTATION.md`         | Fases y checklist de tareas                      |
-| `CLAUDE_GUIDE.md`                | Estado actual del proyecto y próximos pasos      |
-| `docs/DESIGN_SYSTEM.md`         | Design tokens, componentes, UX patterns (leer para trabajo de UI) |
+- Repo: `https://github.com/gnajera-spec/numi` | Branch principal: `main` — nunca pushear directo
+- Flujo: `feature branch → PR → merge`
+- Naming: `feat/`, `fix/`, `refactor/`, `chore/`
+- Commits semánticos en inglés: `feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`, `perf:`
+- Antes de PR: correr tests + confirmar build + verificar que no hay `.env` ni secrets en el diff
 
 ---
 
 ## Deploy
 
-- **No hay CI/CD** — el deploy es manual via `git push origin main`
-- Render detecta el push a `main` y redeploya automáticamente backend y frontend
-- Verificar que el deploy fue exitoso en el dashboard de Render antes de cerrar la tarea
-- **No hay Docker** — Render corre el proceso directamente con el `Procfile` o comando de start
-- Variables de entorno de producción se configuran en Render, nunca en el repo
+- Sin CI/CD — deploy manual: `git push origin main` → Render redeploya backend y frontend automáticamente
+- Sin Docker — Render corre el proceso directo con `Procfile` o comando de start
+- Variables de entorno de producción: solo en Render, nunca en el repo
+
+---
+
+## Documentación técnica
+
+| Archivo | Contenido |
+|---|---|
+| `CLAUDE_GUIDE.md` | Estado actual, decisiones técnicas, log de sesiones |
+| `docs/API_SPEC.md` | Contratos de endpoints (request / response) |
+| `docs/DATA_MODEL.md` | Tablas, columnas, relaciones, índices |
+| `docs/DESIGN_SYSTEM.md` | Tokens de color, tipografía, componentes, UX patterns |
+| `docs/ARCHITECTURE.md` | Flujo general del sistema |
+| `docs/requirements/` | Requerimientos por módulo |

@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ErrorBanner } from '../../components/ErrorBanner';
 import { NumiIsotipo } from '../../components/NumiLogo';
 
-const ALLOWED_ROLES = ['rrhh', 'admin_empresa', 'super_admin', 'servicio_medico'];
+const ALLOWED_ROLES = ['rrhh', 'admin_empresa'];
 
 /* ── Floating-label input ─────────────────────────────────────────────────── */
 function Field({
@@ -99,9 +99,17 @@ export function AdminLoginPage() {
   const [totpCode, setTotpCode] = useState('');
 
   useEffect(() => {
-    if (isAuthenticated && user && ALLOWED_ROLES.includes(user.role)) {
-      const dest = user.role === 'servicio_medico' ? '/admin/medico/fichas' : '/admin/dashboard';
-      navigate(dest, { replace: true });
+    if (isAuthenticated && user) {
+      if (user.role === 'super_admin') {
+        navigate('/superadmin/tenants', { replace: true });
+        return;
+      }
+      if (ALLOWED_ROLES.includes(user.role)) {
+        const dest =
+          user.role === 'admin_empresa' ? '/admin/usuarios' :
+          '/admin/dashboard';
+        navigate(dest, { replace: true });
+      }
     }
   }, [isAuthenticated, user, navigate]);
 

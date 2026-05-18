@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Calendar, Plus, X, Stethoscope, Briefcase, Upload, FileText } from "lucide-react";
+import { Calendar, Plus, X, Stethoscope, Briefcase, Upload, FileText, Loader } from "lucide-react";
 import { licenciasService } from "../services/licenciasService";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
@@ -8,10 +8,11 @@ import { Spinner } from "../components/Spinner";
 import type { TipoLicencia, SolicitudLicencia, SaldoLicencia, NuevaSolicitud, EstadoSolicitud } from "../types";
 
 const estadoBadge: Record<EstadoSolicitud, { label: string; color: string; bg: string }> = {
-  pendiente: { label: "Pendiente", color: "#fff", bg: "var(--color-state-pending)" },
-  aprobada: { label: "Aprobada", color: "#fff", bg: "var(--color-state-present)" },
-  rechazada: { label: "Rechazada", color: "#fff", bg: "var(--color-state-absent)" },
-  cancelada: { label: "Cancelada", color: "var(--color-content-secondary)", bg: "var(--color-surface-empty)" },
+  pendiente:   { label: "Pendiente",    color: "#fff", bg: "var(--color-state-pending)" },
+  en_revision: { label: "En revisión",  color: "#fff", bg: "var(--color-state-pending)" },
+  aprobada:    { label: "Aprobada",     color: "#fff", bg: "var(--color-state-present)" },
+  rechazada:   { label: "Rechazada",    color: "#fff", bg: "var(--color-state-absent)"  },
+  cancelada:   { label: "Cancelada",    color: "var(--color-content-secondary)", bg: "var(--color-surface-empty)" },
 };
 
 function SaldoCard({ saldo }: { saldo: SaldoLicencia }) {
@@ -91,7 +92,6 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
 
   const set = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
 
-  // Compute fecha_fin from fecha_inicio + dias_reposo (T12:00:00 avoids UTC midnight shift)
   const fechaFin = (() => {
     if (!form.fecha_inicio || !form.dias_reposo) return null;
     const d = parseLocalDate(form.fecha_inicio);
@@ -108,23 +108,31 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fechaFin) return;
+    if (!form.fecha_inicio || !form.dias_reposo) {
+      setError("Completá la fecha de inicio y los días de reposo");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
       const payload: NuevaSolicitud = {
         tipo_licencia_id: form.tipo_licencia_id,
         fecha_inicio: form.fecha_inicio,
-        fecha_fin: fechaFin.toISOString().split("T")[0],
+        fecha_fin: fechaFin!.toISOString().split("T")[0],
         comentario: form.comentario || undefined,
-        medico_nombre: form.medico_nombre,
-        medico_apellido: form.medico_apellido,
-        medico_matricula: form.medico_matricula,
+        medico_nombre: form.medico_nombre || undefined,
+        medico_apellido: form.medico_apellido || undefined,
+        medico_matricula: form.medico_matricula || undefined,
         dias_reposo: parseInt(form.dias_reposo),
       };
       const solicitud = await licenciasService.crear(payload);
       if (comprobante) {
-        await licenciasService.subirDocumento(solicitud.id, comprobante);
+        try {
+          await licenciasService.subirDocumento(solicitud.id, comprobante);
+        } catch {
+          // Documento es opcional — la solicitud ya fue creada. El upload puede fallar sin bloquear.
+          console.warn("No se pudo subir el certificado, pero la solicitud fue creada.");
+        }
       }
       onCreated();
     } catch (err) {
@@ -136,47 +144,8 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {error && <ErrorBanner message={error} />}
 
-      {/* Doctor info */}
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Nombre del médico" required>
-          <input
-            type="text"
-            required
-            placeholder="Ej: Carlos"
-            value={form.medico_nombre}
-            onChange={(e) => set("medico_nombre", e.target.value)}
-            className={inputCls}
-            style={inputStyle}
-          />
-        </Field>
-        <Field label="Apellido del médico" required>
-          <input
-            type="text"
-            required
-            placeholder="Ej: García"
-            value={form.medico_apellido}
-            onChange={(e) => set("medico_apellido", e.target.value)}
-            className={inputCls}
-            style={inputStyle}
-          />
-        </Field>
-      </div>
-
-      <Field label="Matrícula médica" required>
-        <input
-          type="text"
-          required
-          placeholder="Ej: MN 12345"
-          value={form.medico_matricula}
-          onChange={(e) => set("medico_matricula", e.target.value)}
-          className={inputCls}
-          style={inputStyle}
-        />
-      </Field>
-
-      {/* Dates */}
+      {/* Dates — first and always visible */}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Fecha de inicio" required>
           <input
@@ -219,8 +188,24 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
         </div>
       )}
 
-      {/* Comprobante */}
-      <Field label="Foto / escáner del certificado médico" required>
+      {/* Doctor info — optional, after dates */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Nombre del médico">
+          <input type="text" placeholder="Ej: Carlos" value={form.medico_nombre}
+            onChange={(e) => set("medico_nombre", e.target.value)} className={inputCls} style={inputStyle} />
+        </Field>
+        <Field label="Apellido del médico">
+          <input type="text" placeholder="Ej: García" value={form.medico_apellido}
+            onChange={(e) => set("medico_apellido", e.target.value)} className={inputCls} style={inputStyle} />
+        </Field>
+      </div>
+      <Field label="Matrícula médica">
+        <input type="text" placeholder="Ej: MN 12345" value={form.medico_matricula}
+          onChange={(e) => set("medico_matricula", e.target.value)} className={inputCls} style={inputStyle} />
+      </Field>
+
+      {/* Comprobante — opcional */}
+      <Field label="Certificado médico (opcional)">
         <label
           className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 cursor-pointer transition-colors hover:border-current"
           style={{
@@ -231,7 +216,6 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
         >
           <input
             type="file"
-            required
             accept="image/*,.pdf"
             className="sr-only"
             onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
@@ -264,6 +248,8 @@ function MedicalLeaveForm({ tipos, onClose, onCreated }: MedicalFormProps) {
           placeholder="Observaciones adicionales..."
         />
       </Field>
+
+      {error && <ErrorBanner message={error} />}
 
       <div className="flex justify-end gap-3 mt-1">
         <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
@@ -334,7 +320,6 @@ function AdminLeaveForm({ tipos, saldos, onClose, onCreated }: AdminFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {error && <ErrorBanner message={error} />}
 
       <Field label="Tipo de licencia" required>
         <select
@@ -440,6 +425,8 @@ function AdminLeaveForm({ tipos, saldos, onClose, onCreated }: AdminFormProps) {
         />
       </Field>
 
+      {error && <ErrorBanner message={error} />}
+
       <div className="flex justify-end gap-3 mt-1">
         <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
         <Button type="submit" loading={loading}>Crear solicitud</Button>
@@ -544,12 +531,14 @@ export function LeavesPage() {
   const [saldos, setSaldos] = useState<SaldoLicencia[]>([]);
   const [tipos, setTipos] = useState<TipoLicencia[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     setError(null);
-    setLoading(true);
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     try {
       const [solRes, saldosRes, tiposRes] = await Promise.allSettled([
         licenciasService.listMisSolicitudes(),
@@ -566,6 +555,7 @@ export function LeavesPage() {
       setError(err instanceof Error ? err.message : "Error al cargar licencias");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -574,7 +564,7 @@ export function LeavesPage() {
   const cancelar = async (id: string) => {
     try {
       await licenciasService.cancelar(id);
-      load();
+      load(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cancelar");
     }
@@ -588,6 +578,7 @@ export function LeavesPage() {
           <h1 className="text-[22px] font-bold" style={{ color: "var(--color-content-primary)" }}>
             Licencias
           </h1>
+          {refreshing && <Loader size={14} style={{ color: "var(--color-content-secondary)", animation: "spin 1s linear infinite" }} />}
         </div>
         <Button onClick={() => setShowModal(true)}>
           <Plus size={16} />
@@ -633,7 +624,7 @@ export function LeavesPage() {
             <div className="flex flex-col gap-3">
               {solicitudes.map((sol) => {
                 const badge = estadoBadge[sol.estado];
-                const esMedica = !!(sol.medico_nombre || sol.dias_reposo);
+                const esMedica = sol.tipo_licencia.es_medica ?? !!(sol.medico_nombre || sol.dias_reposo);
                 return (
                   <div
                     key={sol.id}
@@ -643,10 +634,15 @@ export function LeavesPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {esMedica && <Stethoscope size={13} style={{ color: "var(--color-content-secondary)" }} />}
-                          <span className="font-semibold text-sm" style={{ color: "var(--color-content-primary)" }}>
-                            {sol.tipo_licencia.nombre}
-                          </span>
+                          {esMedica
+                            ? <span className="inline-flex items-center gap-1.5 font-semibold text-sm" style={{ color: "var(--color-content-primary)" }}>
+                                <Stethoscope size={14} style={{ color: "#0e7490" }} />
+                                Licencia médica
+                              </span>
+                            : <span className="font-semibold text-sm" style={{ color: "var(--color-content-primary)" }}>
+                                {sol.tipo_licencia.nombre}
+                              </span>
+                          }
                           <span
                             className="text-xs font-semibold rounded-full px-2.5 py-0.5"
                             style={{ background: badge.bg, color: badge.color }}
@@ -694,7 +690,7 @@ export function LeavesPage() {
           tipos={tipos}
           saldos={saldos}
           onClose={() => setShowModal(false)}
-          onCreated={() => { setShowModal(false); load(); }}
+          onCreated={() => { setShowModal(false); load(true); }}
         />
       )}
     </div>

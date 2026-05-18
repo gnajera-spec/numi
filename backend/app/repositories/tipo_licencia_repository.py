@@ -52,3 +52,16 @@ class TipoLicenciaRepository:
             .execute()
         )
         return bool(res.data)
+
+    async def update(self, tipo_id: str, tenant_id: str, data: dict) -> dict | None:
+        """Update a tenant-owned type (cannot update global types)."""
+        res = await (
+            self._db.table("tipos_licencia")
+            .update(data)
+            .eq("id", tipo_id)
+            .eq("tenant_id", tenant_id)
+            .select("*")
+            .maybe_single()
+            .execute()
+        )
+        return res.data

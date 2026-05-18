@@ -1,6 +1,17 @@
 import { apiClient } from "../lib/apiClient";
 import type { SolicitudLicencia, Paginated } from "../types";
 
+export interface CalendarioItem {
+  id: string;
+  user_id: string;
+  user_nombre: string;
+  tipo_licencia: { id: string; codigo: string; nombre: string };
+  fecha_inicio: string;
+  fecha_fin: string;
+  dias_habiles: number;
+  estado: string;
+}
+
 export const adminLicenciasService = {
   listSolicitudes: (params: {
     estado?: string;
@@ -25,4 +36,42 @@ export const adminLicenciasService = {
     apiClient.post<SolicitudLicencia>(`/licencias/solicitudes/${id}/rechazar`, {
       comentario,
     }),
+
+  aprobarPaso: (id: string, comentario?: string) =>
+    apiClient.post<SolicitudLicencia>(`/licencias/solicitudes/${id}/aprobar-paso`, {
+      comentario: comentario ?? null,
+    }),
+
+  rechazarPaso: (id: string, comentario: string) =>
+    apiClient.post<SolicitudLicencia>(`/licencias/solicitudes/${id}/rechazar-paso`, {
+      comentario,
+    }),
+
+  getHistorial: (id: string) =>
+    apiClient.get<AprobacionPaso[]>(`/licencias/solicitudes/${id}/historial-aprobacion`),
+
+  getCalendario: (mes: string, departamento_id?: string) => {
+    const qs = new URLSearchParams({ mes });
+    if (departamento_id) qs.set("departamento_id", departamento_id);
+    return apiClient.get<CalendarioItem[]>(`/licencias/calendario?${qs}`);
+  },
 };
+
+export interface AprobacionPaso {
+  id: string;
+  solicitud_id: string;
+  orden: number;
+  nombre_paso: string;
+  tipo_aprobador: "rol" | "departamento";
+  rol_aprobador: string | null;
+  departamento_id: string | null;
+  departamento_nombre: string | null;
+  tipo_accion: "aprobar" | "solo_ver" | "derivar";
+  estado: "pendiente" | "aprobado" | "rechazado" | "omitido";
+  aprobado_por: string | null;
+  aprobado_por_nombre: string | null;
+  comentario: string | null;
+  notificado_at: string | null;
+  fecha_decision: string | null;
+  created_at: string;
+}

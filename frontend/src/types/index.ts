@@ -65,7 +65,7 @@ export interface FirmaResponse {
 }
 
 // Licencias
-export type EstadoSolicitud = "pendiente" | "aprobada" | "rechazada" | "cancelada";
+export type EstadoSolicitud = "pendiente" | "en_revision" | "aprobada" | "rechazada" | "cancelada";
 
 export interface TipoLicencia {
   id: string;
@@ -83,7 +83,7 @@ export interface TipoLicencia {
 export interface SolicitudLicencia {
   id: string;
   numero_solicitud: string;
-  tipo_licencia: { id: string; codigo: string; nombre: string };
+  tipo_licencia: { id: string; codigo: string; nombre: string; es_medica?: boolean };
   fecha_inicio: string;
   fecha_fin: string;
   dias_habiles: number;
@@ -92,12 +92,21 @@ export interface SolicitudLicencia {
   comentario_rrhh?: string;
   revisado_por?: { id: string; first_name: string; last_name: string } | null;
   revisado_at?: string | null;
+  flujo_id?: string | null;
+  paso_actual?: number | null;
   created_at: string;
+  // Solicitante
+  user_nombre?: string;
+  user_cuil?: string;
+  // Acción del usuario autenticado en el paso actual (solo en pendientes-mi-aprobacion)
+  mi_tipo_accion?: "aprobar" | "solo_ver" | "derivar";
   // Medical fields
   medico_nombre?: string;
   medico_apellido?: string;
   medico_matricula?: string;
   dias_reposo?: number;
+  // Attached documents (documentos_solicitud)
+  documentos?: { id: string; filename: string; file_url: string; mime_type?: string }[];
 }
 
 export interface SaldoLicencia {
@@ -225,7 +234,7 @@ export interface UpdateUserRequest {
 }
 
 // Admin — Periodos de liquidación
-export type EstadoPeriodo = "abierto" | "cerrado";
+export type EstadoPeriodo = "borrador" | "distribuido" | "cerrado";
 
 export interface PeriodoLiquidacion {
   id: string;
@@ -602,4 +611,24 @@ export interface AptitudPorVencerItem {
   estado: string;
   fecha_vencimiento: string;
   dias_restantes: number;
+}
+
+// Horario laboral
+export interface HorarioLaboral {
+  dia_semana: number; // 1=Lun … 7=Dom
+  hora_inicio: string; // "HH:MM"
+  hora_fin: string;
+}
+
+// Documentos del legajo
+export interface ColaboradorDocumento {
+  id: string;
+  tipo: string;
+  filename: string;
+  file_url: string;
+  file_size_bytes: number;
+  mime_type: string;
+  descripcion?: string | null;
+  uploaded_by: string;
+  created_at: string;
 }

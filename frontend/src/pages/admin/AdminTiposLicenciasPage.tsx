@@ -1,240 +1,186 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Plus, X, ClipboardList, CheckSquare, Square, AlertCircle, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FileText, Plus, X, Pencil, Trash2 } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
-import { Spinner } from "../../components/Spinner";
+import { EmptyState } from "../../components/EmptyState";
+import { ErrorBanner } from "../../components/ErrorBanner";
 import { licenciasService } from "../../services/licenciasService";
 import type { TipoLicencia } from "../../types";
 
-/* ── helpers ─────────────────────────────────────────────────────────────── */
-function Badge({ children, active }: { children: React.ReactNode; active: boolean }) {
-  return (
-    <span
-      className="text-xs rounded-full px-2 py-0.5 font-medium"
-      style={{
-        background: active ? "var(--color-state-present-bg, #f0fdf4)" : "var(--color-surface-empty)",
-        color: active ? "var(--color-state-present, #16a34a)" : "var(--color-content-disabled)",
-      }}
-    >
-      {children}
-    </span>
-  );
+interface FormState {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  dias_maximos: string;
+  requiere_certificado: boolean;
+  is_active: boolean;
 }
 
-/* ── tipos row ───────────────────────────────────────────────────────────── */
-function TipoRow({ tipo, onDelete }: { tipo: TipoLicencia; onDelete: (id: string, nombre: string) => void }) {
-  return (
-    <tr
-      className="border-b transition-colors hover:bg-[var(--color-surface-empty)]"
-      style={{ borderColor: "var(--color-surface-border)" }}
-    >
-      <td className="px-4 py-3">
-        <span
-          className="text-xs font-mono font-bold px-2 py-0.5 rounded"
-          style={{ background: "var(--color-surface-empty)", color: "var(--color-primary)" }}
-        >
-          {tipo.codigo}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
-        {tipo.nombre}
-      </td>
-      <td className="px-4 py-3 text-center">
-        {tipo.requiere_certificado
-          ? <CheckSquare size={16} className="mx-auto" style={{ color: "var(--color-primary)" }} />
-          : <Square size={16} className="mx-auto" style={{ color: "var(--color-content-disabled)" }} />}
-      </td>
-      <td className="px-4 py-3 text-sm text-center" style={{ color: "var(--color-content-secondary)" }}>
-        {tipo.max_dias_por_anio ?? tipo.dias_maximos ?? "—"}
-      </td>
-      <td className="px-4 py-3 text-center">
-        <Badge active={tipo.tenant_id !== null}>{tipo.tenant_id === null ? "Global" : "Personalizado"}</Badge>
-      </td>
-      <td className="px-4 py-3 text-center">
-        <button
-          onClick={() => onDelete(tipo.id, tipo.nombre)}
-          className="p-1.5 rounded-lg transition-colors hover:bg-red-50"
-          title="Eliminar tipo"
-          style={{ color: "var(--color-content-disabled)" }}
-          onMouseEnter={e => (e.currentTarget.style.color = "#dc2626")}
-          onMouseLeave={e => (e.currentTarget.style.color = "var(--color-content-disabled)")}
-        >
-          <Trash2 size={15} />
-        </button>
-      </td>
-    </tr>
-  );
-}
+const emptyForm: FormState = {
+  codigo: "",
+  nombre: "",
+  descripcion: "",
+  dias_maximos: "",
+  requiere_certificado: false,
+  is_active: true,
+};
 
-/* ── modal nuevo tipo ────────────────────────────────────────────────────── */
-interface NuevoTipoModalProps {
+const inputClass =
+  "w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 transition";
+
+const inputStyle = {
+  borderColor: "var(--color-surface-border)",
+  color: "var(--color-content-primary)",
+  background: "var(--color-surface-app)",
+};
+
+interface ModalProps {
+  editing: TipoLicencia | null;
+  saving: boolean;
   onClose: () => void;
-  onCreated: (t: TipoLicencia) => void;
+  onSave: (data: FormState) => void;
 }
-function NuevoTipoModal({ onClose, onCreated }: NuevoTipoModalProps) {
-  const [codigo, setCodigo] = useState("");
-  const [nombre, setNombre] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [requiereCert, setRequiereCert] = useState(false);
-  const [diasMax, setDiasMax] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: FormEvent) {
+function TipoLicenciaModal({ editing, saving, onClose, onSave }: ModalProps) {
+  const isGlobal = !!(editing && !editing.tenant_id);
+  const [form, setForm] = useState<FormState>(
+    editing
+      ? {
+          codigo: editing.codigo,
+          nombre: editing.nombre,
+          descripcion: editing.descripcion ?? "",
+          dias_maximos: editing.dias_maximos != null ? String(editing.dias_maximos) : "",
+          requiere_certificado: editing.requiere_certificado,
+          is_active: editing.is_active ?? true,
+        }
+      : emptyForm
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSaving(true);
-    try {
-      const created = await licenciasService.createTipo({
-        codigo: codigo.toUpperCase(),
-        nombre,
-        descripcion: descripcion || undefined,
-        requiere_certificado: requiereCert,
-        dias_maximos: diasMax ? Number(diasMax) : undefined,
-      });
-      onCreated(created);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error al crear";
-      setError(msg);
-    } finally {
-      setSaving(false);
-    }
-  }
+    onSave(form);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.4)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div
-        className="w-full max-w-md rounded-2xl shadow-2xl p-6 flex flex-col gap-5"
+        className="w-full max-w-md rounded-2xl shadow-xl p-6 flex flex-col gap-5"
         style={{ background: "var(--color-surface-card)" }}
       >
-        {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold" style={{ color: "var(--color-content-primary)" }}>
-            Nuevo tipo de licencia
+          <h2 className="text-base font-semibold" style={{ color: "var(--color-content-primary)" }}>
+            {editing ? "Editar tipo de licencia" : "Nuevo tipo de licencia"}
           </h2>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-[var(--color-surface-empty)]">
-            <X size={18} style={{ color: "var(--color-content-secondary)" }} />
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 transition-colors">
+            <X size={16} style={{ color: "var(--color-content-secondary)" }} />
           </button>
         </div>
 
-        {error && (
-          <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg"
-            style={{ background: "var(--color-state-error-bg, #fef2f2)", color: "var(--color-state-error, #dc2626)" }}>
-            <AlertCircle size={15} />
-            {error}
-          </div>
+        {isGlobal && (
+          <p style={{
+            fontSize: 12, padding: "8px 12px", borderRadius: 8,
+            background: "#fefce8", color: "#92400e",
+            border: "1px solid #fde68a",
+          }}>
+            Este es un tipo de licencia global del sistema. Solo podés ver sus datos, no modificarlos.
+          </p>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* Código */}
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
-              Código <span style={{ color: "var(--color-primary)" }}>*</span>
+              Código <span className="text-red-500">*</span>
             </label>
             <input
-              value={codigo}
-              onChange={e => setCodigo(e.target.value.toUpperCase())}
               required
+              disabled={!!editing}
+              value={form.codigo}
+              onChange={(e) => setForm((f) => ({ ...f, codigo: e.target.value.toUpperCase() }))}
+              placeholder="Ej: VAC"
               maxLength={10}
-              placeholder="ej. LIC-ANT"
-              className="px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2"
-              style={{
-                borderColor: "var(--color-surface-border)",
-                background: "var(--color-surface-empty)",
-                color: "var(--color-content-primary)",
-              }}
+              className={inputClass}
+              style={{ ...inputStyle, opacity: editing ? 0.6 : 1 }}
             />
-            <p className="text-xs" style={{ color: "var(--color-content-disabled)" }}>
-              Solo letras mayúsculas, números y guiones. Máx. 10 caracteres.
-            </p>
           </div>
 
-          {/* Nombre */}
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
-              Nombre <span style={{ color: "var(--color-primary)" }}>*</span>
+              Nombre <span className="text-red-500">*</span>
             </label>
             <input
-              value={nombre}
-              onChange={e => setNombre(e.target.value)}
               required
-              placeholder="ej. Licencia por antigüedad"
-              className="px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2"
-              style={{
-                borderColor: "var(--color-surface-border)",
-                background: "var(--color-surface-empty)",
-                color: "var(--color-content-primary)",
-              }}
+              disabled={isGlobal}
+              value={form.nombre}
+              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+              placeholder="Ej: Vacaciones"
+              className={inputClass}
+              style={{ ...inputStyle, opacity: isGlobal ? 0.6 : 1 }}
             />
           </div>
 
-          {/* Descripción */}
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
               Descripción
             </label>
             <textarea
-              value={descripcion}
-              onChange={e => setDescripcion(e.target.value)}
               rows={2}
-              placeholder="Descripción opcional..."
-              className="px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 resize-none"
-              style={{
-                borderColor: "var(--color-surface-border)",
-                background: "var(--color-surface-empty)",
-                color: "var(--color-content-primary)",
-              }}
+              disabled={isGlobal}
+              value={form.descripcion}
+              onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
+              placeholder="Descripción breve"
+              className={inputClass}
+              style={{ ...inputStyle, resize: "none", opacity: isGlobal ? 0.6 : 1 }}
             />
           </div>
 
-          {/* Días máximos */}
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
-              Días máximos por año
+              Días máximos{" "}
+              <span className="text-xs font-normal" style={{ color: "var(--color-content-secondary)" }}>
+                (dejar vacío = ilimitado)
+              </span>
             </label>
             <input
               type="number"
-              value={diasMax}
-              onChange={e => setDiasMax(e.target.value)}
               min={1}
               max={365}
-              placeholder="Sin límite"
-              className="px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 w-36"
-              style={{
-                borderColor: "var(--color-surface-border)",
-                background: "var(--color-surface-empty)",
-                color: "var(--color-content-primary)",
-              }}
+              disabled={isGlobal}
+              value={form.dias_maximos}
+              onChange={(e) => setForm((f) => ({ ...f, dias_maximos: e.target.value }))}
+              placeholder="30"
+              className={inputClass}
+              style={{ ...inputStyle, opacity: isGlobal ? 0.6 : 1 }}
             />
           </div>
 
-          {/* Requiere certificado */}
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={requiereCert}
-              onChange={e => setRequiereCert(e.target.checked)}
-              className="w-4 h-4 rounded"
-              style={{ accentColor: "var(--color-primary)" }}
-            />
-            <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>
-              Requiere certificado médico / documentación
-            </span>
-          </label>
+          <div className="flex flex-col gap-2">
+            {editing && !isGlobal && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_active}
+                  onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: "var(--color-primary)" }}
+                />
+                <span className="text-sm" style={{ color: "var(--color-content-primary)" }}>Activo</span>
+              </label>
+            )}
+          </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded-lg border transition-colors hover:bg-[var(--color-surface-empty)]"
-              style={{ borderColor: "var(--color-surface-border)", color: "var(--color-content-secondary)" }}
-            >
-              Cancelar
-            </button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Guardando…" : "Crear tipo"}
+          <div className="flex gap-3 pt-1">
+            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+              {isGlobal ? "Cerrar" : "Cancelar"}
             </Button>
+            {!isGlobal && (
+              <Button type="submit" className="flex-1" disabled={saving}>
+                {saving ? "Guardando…" : editing ? "Guardar cambios" : "Crear tipo"}
+              </Button>
+            )}
           </div>
         </form>
       </div>
@@ -242,188 +188,214 @@ function NuevoTipoModal({ onClose, onCreated }: NuevoTipoModalProps) {
   );
 }
 
-
-/* ── modal confirmar borrado ─────────────────────────────────────────────── */
-interface ConfirmDeleteModalProps {
-  nombre: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  deleting: boolean;
-  error?: string | null;
-}
-function ConfirmDeleteModal({ nombre, onConfirm, onCancel, deleting, error }: ConfirmDeleteModalProps) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }}>
-      <div
-        className="w-full max-w-sm rounded-2xl shadow-2xl p-6 flex flex-col gap-5"
-        style={{ background: "var(--color-surface-card)" }}
-      >
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 shrink-0 rounded-full p-2" style={{ background: "#fef2f2" }}>
-            <Trash2 size={18} style={{ color: "#dc2626" }} />
-          </div>
-          <div>
-            <h2 className="text-base font-bold" style={{ color: "var(--color-content-primary)" }}>
-              Eliminar tipo de licencia
-            </h2>
-            <p className="text-sm mt-1" style={{ color: "var(--color-content-secondary)" }}>
-              ¿Confirmás que querés eliminar <strong>{nombre}</strong>?
-              Esta acción no puede deshacerse.
-            </p>
-          </div>
-        </div>
-        {error && (
-          <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg"
-            style={{ background: "#fef2f2", color: "#dc2626" }}>
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            disabled={deleting}
-            className="px-4 py-2 text-sm rounded-lg border transition-colors hover:bg-[var(--color-surface-empty)]"
-            style={{ borderColor: "var(--color-surface-border)", color: "var(--color-content-secondary)" }}
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={deleting}
-            className="px-4 py-2 text-sm rounded-lg font-semibold transition-colors"
-            style={{ background: "#dc2626", color: "#fff", opacity: deleting ? 0.6 : 1 }}
-          >
-            {deleting ? "Eliminando…" : "Sí, eliminar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── page ────────────────────────────────────────────────────────────────── */
 export function AdminTiposLicenciasPage() {
   const [tipos, setTipos] = useState<TipoLicencia[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string; nombre: string } | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<TipoLicencia | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => {
-    licenciasService.listTipos()
-      .then(setTipos)
-      .catch(() => setError("No se pudieron cargar los tipos de licencia."))
-      .finally(() => setLoading(false));
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  function handleCreated(t: TipoLicencia) {
-    setTipos(prev => [...prev, t]);
-    setShowModal(false);
-  }
-
-  function requestDelete(id: string, nombre: string) {
-    setConfirmDelete({ id, nombre });
-  }
-
-  async function handleDelete() {
-    if (!confirmDelete) return;
-    setDeleting(true);
-    setDeleteError(null);
+  async function load() {
+    setLoading(true);
+    setError(null);
     try {
-      await licenciasService.deleteTipo(confirmDelete.id);
-      setTipos(prev => prev.filter(t => t.id !== confirmDelete.id));
-      setConfirmDelete(null);
-    } catch (err: unknown) {
-      setDeleteError(err instanceof Error ? err.message : "No se pudo eliminar el tipo.");
+      const all = await licenciasService.listTipos();
+      // Solo mostrar tipos administrativos — los médicos (es_medica=true) se gestionan aparte
+      setTipos(all.filter((t: TipoLicencia) => !t.es_medica));
+    } catch {
+      setError("No se pudieron cargar los tipos de licencia.");
     } finally {
-      setDeleting(false);
+      setLoading(false);
     }
   }
+
+  const handleSave = async (data: FormState) => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (editing) {
+        await licenciasService.updateTipo(editing.id, {
+          nombre: data.nombre,
+          descripcion: data.descripcion || null,
+          requiere_certificado: data.requiere_certificado,
+          dias_maximos: data.dias_maximos ? Number(data.dias_maximos) : null,
+          is_active: data.is_active,
+        });
+      } else {
+        await licenciasService.createTipo({
+          codigo: data.codigo,
+          nombre: data.nombre,
+          descripcion: data.descripcion || undefined,
+          requiere_certificado: data.requiere_certificado,
+          dias_maximos: data.dias_maximos ? Number(data.dias_maximos) : undefined,
+        });
+      }
+      await load();
+      setShowModal(false);
+      setEditing(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "No se pudo guardar.";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (tipo: TipoLicencia) => {
+    if (!confirm(`¿Eliminar el tipo de licencia "${tipo.nombre}"? Esta acción no se puede deshacer.`)) return;
+    setDeleting(tipo.id);
+    setError(null);
+    try {
+      await licenciasService.deleteTipo(tipo.id);
+      await load();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "No se pudo eliminar el tipo de licencia.";
+      setError(msg);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const openEdit = (tipo: TipoLicencia) => { setEditing(tipo); setShowModal(true); };
+  const openNew = () => { setEditing(null); setShowModal(true); };
 
   return (
     <AdminLayout>
       <div className="flex flex-col gap-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold" style={{ color: "var(--color-content-primary)" }}>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--color-content-primary)" }}>
               Tipos de licencias
             </h1>
             <p className="text-sm mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
-              Parametrizá los tipos de licencias administrativas disponibles para tu empresa.
+              Configurá los tipos de licencia disponibles para los colaboradores
             </p>
           </div>
-          <Button onClick={() => setShowModal(true)}>
-            <Plus size={16} /> Nuevo tipo
+          <Button onClick={openNew} className="flex items-center gap-2">
+            <Plus size={16} />
+            Nuevo tipo
           </Button>
         </div>
 
-        {/* Table */}
-        <div
-          className="rounded-2xl border overflow-hidden"
-          style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-card)" }}
-        >
-          {loading ? (
-            <div className="flex justify-center py-16">
-              <Spinner />
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-sm" style={{ color: "var(--color-content-secondary)" }}>
-              <AlertCircle size={32} style={{ color: "var(--color-state-error, #dc2626)" }} />
-              {error}
-            </div>
-          ) : tipos.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-16">
-              <ClipboardList size={40} style={{ color: "var(--color-content-disabled)" }} />
-              <p className="text-sm" style={{ color: "var(--color-content-secondary)" }}>
-                No hay tipos de licencia configurados aún.
-              </p>
-              <Button onClick={() => setShowModal(true)}>
-                <Plus size={15} /> Crear el primero
-              </Button>
-            </div>
-          ) : (
-            <table className="w-full">
+        {error && <ErrorBanner message={error} onRetry={load} />}
+
+        {loading ? (
+          <div style={{ padding: 40, textAlign: "center", color: "var(--color-content-secondary)", fontSize: 13 }}>
+            Cargando…
+          </div>
+        ) : tipos.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="Sin tipos de licencia"
+            description="Creá el primer tipo de licencia para que los colaboradores puedan solicitarlas."
+          />
+        ) : (
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-card)" }}
+          >
+            <table className="w-full text-sm">
               <thead>
-                <tr style={{ borderBottom: `1px solid var(--color-surface-border)`, background: "var(--color-surface-empty)" }}>
-                  {["Código", "Nombre", "Requiere cert.", "Días máx./año", "Tipo", ""].map(h => (
-                    <th
-                      key={h}
-                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                      style={{ color: "var(--color-content-secondary)" }}
-                    >
-                      {h}
-                    </th>
-                  ))}
+                <tr
+                  className="text-left text-xs font-medium uppercase tracking-wide"
+                  style={{
+                    borderBottom: "1px solid var(--color-surface-border)",
+                    color: "var(--color-content-secondary)",
+                    background: "var(--color-surface-app)",
+                  }}
+                >
+                  <th className="px-4 py-3">Código</th>
+                  <th className="px-4 py-3">Nombre</th>
+                  <th className="px-4 py-3 hidden md:table-cell">Descripción</th>
+                  <th className="px-4 py-3 text-center">Días máx.</th>
+                  <th className="px-4 py-3 text-center hidden sm:table-cell">Certificado</th>
+                  <th className="px-4 py-3 text-center">Estado</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody>
-                {tipos.map(t => <TipoRow key={t.id} tipo={t} onDelete={requestDelete} />)}
+              <tbody className="divide-y" style={{ borderColor: "var(--color-surface-border)" }}>
+                {tipos.map((tipo) => (
+                  <tr key={tipo.id} className="hover:bg-[--color-surface-app] transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs" style={{ color: "var(--color-content-secondary)" }}>
+                      {tipo.codigo}
+                    </td>
+                    <td className="px-4 py-3 font-medium" style={{ color: "var(--color-content-primary)" }}>
+                      {tipo.nombre}
+                      {!tipo.tenant_id && (
+                        <span style={{
+                          marginLeft: 6, fontSize: 10, fontWeight: 600, padding: "1px 6px",
+                          borderRadius: 10, background: "var(--color-primary-light)",
+                          color: "var(--color-primary)",
+                        }}>Global</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell" style={{ color: "var(--color-content-secondary)" }}>
+                      {tipo.descripcion || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-center" style={{ color: "var(--color-content-primary)" }}>
+                      {tipo.dias_maximos != null ? tipo.dias_maximos : "Ilimitado"}
+                    </td>
+                    <td className="px-4 py-3 text-center hidden sm:table-cell">
+                      <span
+                        className="text-xs rounded-full px-2 py-0.5 font-medium"
+                        style={{
+                          background: tipo.requiere_certificado ? "var(--color-primary-light)" : "var(--color-surface-empty)",
+                          color: tipo.requiere_certificado ? "var(--color-primary)" : "var(--color-content-disabled)",
+                        }}
+                      >
+                        {tipo.requiere_certificado ? "Sí" : "No"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className="text-xs rounded-full px-2 py-0.5 font-medium"
+                        style={{
+                          background: tipo.is_active ? "var(--color-state-present-bg, #f0fdf4)" : "var(--color-surface-empty)",
+                          color: tipo.is_active ? "var(--color-state-present)" : "var(--color-content-disabled)",
+                        }}
+                      >
+                        {tipo.is_active ? "Activo" : "Inactivo"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openEdit(tipo)}
+                          className="p-1.5 rounded-lg hover:bg-[--color-surface-app] transition-colors"
+                          aria-label="Editar"
+                        >
+                          <Pencil size={14} style={{ color: "var(--color-content-secondary)" }} />
+                        </button>
+                        {tipo.tenant_id && (
+                          <button
+                            onClick={() => handleDelete(tipo)}
+                            disabled={deleting === tipo.id}
+                            className="p-1.5 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-40"
+                            aria-label="Eliminar"
+                          >
+                            <Trash2 size={14} style={{ color: deleting === tipo.id ? "var(--color-content-disabled)" : "#ef4444" }} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-          )}
-        </div>
-
-        {/* Info */}
-        <p className="text-xs" style={{ color: "var(--color-content-disabled)" }}>
-          Los tipos marcados como <strong>Global</strong> son provistos por NUMI y no pueden modificarse.
-          Los tipos <strong>Personalizados</strong> son propios de tu empresa.
-        </p>
+          </div>
+        )}
       </div>
 
       {showModal && (
-        <NuevoTipoModal onClose={() => setShowModal(false)} onCreated={handleCreated} />
-      )}
-      {confirmDelete && (
-        <ConfirmDeleteModal
-          nombre={confirmDelete.nombre}
-          onConfirm={handleDelete}
-          onCancel={() => { setConfirmDelete(null); setDeleteError(null); }}
-          deleting={deleting}
-          error={deleteError}
+        <TipoLicenciaModal
+          editing={editing}
+          saving={saving}
+          onClose={() => { setShowModal(false); setEditing(null); }}
+          onSave={handleSave}
         />
       )}
     </AdminLayout>
