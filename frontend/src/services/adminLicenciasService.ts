@@ -66,6 +66,7 @@ export interface AprobacionPaso {
   rol_aprobador: string | null;
   departamento_id: string | null;
   departamento_nombre: string | null;
+  tipo_accion: "aprobar" | "solo_ver" | "derivar";
   estado: "pendiente" | "aprobado" | "rechazado" | "omitido";
   aprobado_por: string | null;
   aprobado_por_nombre: string | null;

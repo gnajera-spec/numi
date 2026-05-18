@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import io
 import math
@@ -36,6 +37,7 @@ from app.schemas.recibos import (
 )
 from app.schemas.users import Pagination
 from app.services.cuil_extraction_service import extract_cuil_from_pdf, test_extraction
+from app.services.smtp_service import SmtpService
 
 _STORAGE_BUCKET = "recibos"
 _SIGNED_URL_TTL = 86400  # 24h
@@ -68,6 +70,7 @@ class ReciboService:
         wa_config_repo: WhatsappConfigRepository | None = None,
         upload_job_repo: UploadJobRepository | None = None,
         cuil_config_repo: CuilRegionConfigRepository | None = None,
+        smtp_service: SmtpService | None = None,
     ) -> None:
         self._db = db
         self._periodos = periodo_repo
@@ -76,6 +79,7 @@ class ReciboService:
         self._wa_configs = wa_config_repo
         self._upload_jobs = upload_job_repo or UploadJobRepository(db)
         self._cuil_configs = cuil_config_repo or CuilRegionConfigRepository(db)
+        self._smtp = smtp_service
 
     # ── CUIL region config ───────────────────────────────────────
 
@@ -368,6 +372,8 @@ class ReciboService:
             await self._recibos.create_many(records)
             await self._periodos.increment_total_recibos(periodo_id, len(records))
             await self._periodos.update_estado(periodo_id, "distribuido")
+            distributed_user_ids = [r["user_id"] for r in records]
+            asyncio.create_task(self._notify_email_recibo(tenant_id, distributed_user_ids, periodo))
 
         # Clean up temp files and job record
         if temp_paths:
@@ -611,6 +617,36 @@ class ReciboService:
             return res.get("signedURL") or res.get("signedUrl")
         except Exception:
             return None
+
+    async def _notify_email_recibo(self, tenant_id: str, user_ids: list[str], periodo: dict) -> None:
+        """Send email notification when a recibo is distributed. Best-effort — never raises."""
+        if not self._smtp:
+            return
+        try:
+            cfg = await self._smtp.get_config(tenant_id)
+            if not cfg:
+                return
+            periodo_nombre = periodo.get("periodo", "")
+            for uid in user_ids:
+                try:
+                    user = await self._users.get_by_id(uid)
+                    if not user or not user.get("email"):
+                        continue
+                    nombre = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Colaborador"
+                    subject = f"Tu recibo de sueldo {periodo_nombre} está disponible — NUMI"
+                    html = f"""
+                    <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                      <h2 style="color:#e87d50">Recibo de sueldo disponible</h2>
+                      <p>Hola {nombre}, tu recibo de sueldo del período <strong>{periodo_nombre}</strong> ya está disponible en NUMI.</p>
+                      <p style="color:#475569">Ingresá a la plataforma para verlo y firmarlo si corresponde.</p>
+                    </div>
+                    """
+                    await self._smtp._send(cfg, user["email"], subject, html)
+                except Exception:
+                    pass
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error("Error sending email for recibo: %s", exc)
 
     @staticmethod
     def _row_to_recibo(row: dict) -> ReciboOut:

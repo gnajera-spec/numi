@@ -371,7 +371,7 @@ function DetailModal({
             {/* Rich text body */}
             <div
               className="text-sm prose prose-sm max-w-none"
-              style={{ color: "var(--color-content-primary)" }}
+              style={{ color: "var(--color-content-primary)", wordBreak: "break-word", overflowWrap: "break-word", whiteSpace: "pre-wrap" }}
               dangerouslySetInnerHTML={{ __html: comData.cuerpo }}
             />
 
@@ -508,6 +508,7 @@ export function CommunicationsPage() {
         <div className="flex flex-col gap-3">
           {filtered.map((com) => {
             const comData = com.comunicaciones;
+            if (!comData) return null;
             const isUnread = !com.leido_at;
             const adjuntos = comData.comunicacion_adjuntos ?? [];
 
@@ -546,14 +547,6 @@ export function CommunicationsPage() {
                       </span>
                     )}
                   </div>
-
-                  {/* Body preview */}
-                  <p className="text-xs mt-1 line-clamp-2"
-                    style={{ color: "var(--color-content-secondary)" }}
-                    dangerouslySetInnerHTML={{
-                      __html: comData.cuerpo.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
-                    }}
-                  />
 
                   {/* Footer row */}
                   <div className="flex items-center gap-3 mt-1.5">

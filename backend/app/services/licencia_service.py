@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 import logging
 import math
@@ -39,6 +40,7 @@ from app.schemas.licencias import (
     UpdateTipoLicenciaRequest,
 )
 from app.schemas.users import Pagination
+from app.services.smtp_service import SmtpService
 from app.utils.encryption import decrypt
 
 logger = logging.getLogger(__name__)
@@ -74,6 +76,7 @@ class LicenciaService:
         flujo_repo: FlujoAprobacionRepository | None = None,
         aprobacion_repo: AprobacionSolicitudRepository | None = None,
         colaborador_repo: ColaboradorRepository | None = None,
+        smtp_service: SmtpService | None = None,
     ) -> None:
         self._db = db
         self._tipos = tipo_repo
@@ -85,6 +88,7 @@ class LicenciaService:
         self._flujos = flujo_repo
         self._aprobaciones = aprobacion_repo
         self._colaboradores = colaborador_repo
+        self._smtp = smtp_service
 
     # ── Tipos ─────────────────────────────────────────────────────────────────
 
@@ -142,10 +146,73 @@ class LicenciaService:
 
     # ── Solicitudes ───────────────────────────────────────────────────────────
 
+    async def _inject_mi_tipo_accion_batch(
+        self, rows: list[dict], current_user: dict | None = None
+    ) -> list[dict]:
+        """Batch-inject _mi_tipo_accion for solicitudes with an active flujo paso.
+
+        Fetches all pending aprobaciones for the given rows in one query and injects
+        the tipo_accion of the current pending paso into each matching row dict.
+
+        When current_user is provided, the injected value is adjusted to reflect
+        whether the caller is actually authorized to act on the step. If they are
+        not the designated approver, 'solo_ver' is returned so the UI hides the
+        action buttons (the backend would 403 anyway).
+        """
+        if not self._aprobaciones:
+            return rows
+        solicitud_ids = [
+            str(r["id"]) for r in rows
+            if r.get("flujo_id") and r.get("paso_actual") is not None
+        ]
+        if not solicitud_ids:
+            return rows
+
+        apm_res = await self._db.table("aprobaciones_solicitud").select(
+            "solicitud_id, tipo_accion, tipo_aprobador, rol_aprobador, orden"
+        ).in_("solicitud_id", solicitud_ids).eq("estado", "pendiente").execute()
+
+        # Map each solicitud to its lowest-orden pending aprobacion
+        tipo_map: dict[str, tuple[str, int, str, str | None]] = {}
+        for a in (apm_res.data or []):
+            sid = str(a["solicitud_id"])
+            if sid not in tipo_map or a["orden"] < tipo_map[sid][1]:
+                tipo_map[sid] = (
+                    a["tipo_accion"], a["orden"],
+                    a["tipo_aprobador"], a.get("rol_aprobador"),
+                )
+
+        role = current_user.get("role", "") if current_user else ""
+
+        for r in rows:
+            sid = str(r["id"])
+            if sid not in tipo_map:
+                continue
+            tipo_accion, _, tipo_aprobador, rol_aprobador = tipo_map[sid]
+
+            # If already solo_ver, nothing to adjust
+            if tipo_accion == "solo_ver" or not current_user:
+                r["_mi_tipo_accion"] = tipo_accion
+                continue
+
+            # admin_empresa can act on any non-solo_ver step
+            if role == "admin_empresa":
+                r["_mi_tipo_accion"] = tipo_accion
+            elif tipo_aprobador == "rol":
+                # Only the designated role can act; others are observers
+                r["_mi_tipo_accion"] = tipo_accion if role == rol_aprobador else "solo_ver"
+            elif tipo_aprobador == "departamento":
+                # Only colaboradores in the dept can act
+                r["_mi_tipo_accion"] = tipo_accion if role == "colaborador" else "solo_ver"
+            else:
+                r["_mi_tipo_accion"] = tipo_accion
+        return rows
+
     async def list_solicitudes(
         self,
         tenant_id: str,
         *,
+        current_user: dict | None = None,
         estado: str | None = None,
         tipo_licencia_id: str | None = None,
         user_id: str | None = None,
@@ -156,6 +223,7 @@ class LicenciaService:
             tenant_id, estado=estado, tipo_licencia_id=tipo_licencia_id, user_id=user_id,
             page=page, page_size=page_size,
         )
+        rows = await self._inject_mi_tipo_accion_batch(rows, current_user=current_user)
         return PaginatedSolicitudes(
             data=[SolicitudLicenciaOut.from_row(r) for r in rows],
             pagination=_build_pagination(total, page, page_size, "/licencias/solicitudes"),
@@ -276,6 +344,7 @@ class LicenciaService:
             tenant_id, target_user_id, str(data.tipo_licencia_id), anio, dias
         )
 
+        asyncio.create_task(self._notify_email(row, "creada"))
         return SolicitudLicenciaOut.from_row(row)
 
     async def get_solicitud(self, solicitud_id: str | UUID, current_user: dict) -> SolicitudLicenciaOut:
@@ -327,8 +396,9 @@ class LicenciaService:
             row["dias_habiles"],
         )
 
-        # Notify collaborator via WA (best-effort)
+        # Notify collaborator via WA and email (best-effort)
         await self._notify_wa(row, "aprobada", comentario=data.comentario)
+        asyncio.create_task(self._notify_email(row, "aprobada", comentario=data.comentario))
 
         return SolicitudLicenciaOut.from_row(updated)
 
@@ -369,6 +439,7 @@ class LicenciaService:
         )
 
         await self._notify_wa(row, "rechazada", comentario=data.comentario)
+        asyncio.create_task(self._notify_email(row, "rechazada", comentario=data.comentario))
 
         return SolicitudLicenciaOut.from_row(updated)
 
@@ -538,6 +609,7 @@ class LicenciaService:
             )
             rows = rows + rows2
             total = total + total2
+            rows = await self._inject_mi_tipo_accion_batch(rows)
         elif role in ("rrhh", "servicio_medico"):
             rows, total = await self._aprobaciones.get_pendientes_para_rol(
                 tenant_id, role, page, page_size
@@ -626,18 +698,35 @@ class LicenciaService:
         is_last = paso_actual_num >= total_pasos
 
         if is_last:
+            anio = row["fecha_inicio"].year if isinstance(row["fecha_inicio"], date) else int(str(row["fecha_inicio"])[:4])
+            dias_original = row["dias_habiles"]
+            dias_final = data.dias_aprobados if (data.dias_aprobados and data.dias_aprobados != dias_original) else dias_original
+
+            # If Servicio Médico overrides dias, fix saldo before approving
+            if dias_final != dias_original:
+                await self._saldos.subtract_pendientes(
+                    str(row["tenant_id"]), str(row["user_id"]),
+                    str(row["tipo_licencia_id"]), anio, dias_original,
+                )
+                await self._saldos.add_pendientes(
+                    str(row["tenant_id"]), str(row["user_id"]),
+                    str(row["tipo_licencia_id"]), anio, dias_final,
+                )
+                await self._solicitudes.update({"id": str(solicitud_id), "dias_habiles": dias_final})
+                row = await self._solicitudes.get(solicitud_id) or row
+
             # Final approval
             updated = await self._solicitudes.update_estado(
                 solicitud_id, "aprobada",
                 revisado_por=str(current_user["id"]),
                 comentario_rrhh=data.comentario,
             )
-            anio = row["fecha_inicio"].year if isinstance(row["fecha_inicio"], date) else int(str(row["fecha_inicio"])[:4])
             await self._saldos.approve(
                 str(row["tenant_id"]), str(row["user_id"]),
-                str(row["tipo_licencia_id"]), anio, row["dias_habiles"],
+                str(row["tipo_licencia_id"]), anio, dias_final,
             )
             await self._notify_wa(row, "aprobada", comentario=data.comentario)
+            asyncio.create_task(self._notify_email(row, "aprobada", comentario=data.comentario))
         else:
             # Advance to next step
             next_paso = paso_actual_num + 1
@@ -705,6 +794,7 @@ class LicenciaService:
             str(row["tipo_licencia_id"]), anio, row["dias_habiles"],
         )
         await self._notify_wa(row, "rechazada", comentario=data.comentario)
+        asyncio.create_task(self._notify_email(row, "rechazada", comentario=data.comentario))
 
         return SolicitudLicenciaOut.from_row(updated)
 
@@ -731,10 +821,23 @@ class LicenciaService:
                 })
             paso_actual += 1
             if paso_actual > total:
-                # All steps were solo_ver — fully approve
+                # All remaining steps were solo_ver — fully approve
                 solicitud_row = await self._solicitudes.update_estado(
                     solicitud_row["id"], "aprobada"
                 )
+                # Update saldo: move dias from pendientes to tomados
+                try:
+                    fi = solicitud_row.get("fecha_inicio")
+                    anio = fi.year if isinstance(fi, date) else int(str(fi)[:4])
+                    await self._saldos.approve(
+                        str(solicitud_row["tenant_id"]),
+                        str(solicitud_row["user_id"]),
+                        str(solicitud_row["tipo_licencia_id"]),
+                        anio,
+                        solicitud_row["dias_habiles"],
+                    )
+                except Exception as exc:
+                    logger.warning("Error actualizando saldo en auto_advance_solo_ver: %s", exc)
             else:
                 solicitud_row = await self._solicitudes.update({
                     "id": str(solicitud_row["id"]),
@@ -826,7 +929,14 @@ class LicenciaService:
         """Raises 403 if the user is not authorized to act on this step."""
         role = current_user["role"]
 
-        # admin_empresa can act on any step
+        # Nobody can approve/reject a solo_ver step — it only observes
+        if aprobacion.get("tipo_accion") == "solo_ver":
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Este paso es solo de notificación — no requiere aprobación ni rechazo"
+            )
+
+        # admin_empresa can act on any non-solo_ver step
         if role == "admin_empresa":
             return
 
@@ -913,3 +1023,76 @@ class LicenciaService:
             logger.error("Meta API error notifying licencia result: %s", exc)
         except Exception as exc:
             logger.error("Error notifying licencia result: %s", exc)
+
+    async def _notify_email(self, solicitud: dict, resultado: str, comentario: str | None = None) -> None:
+        """Send email notification to collaborator. Best-effort — never raises."""
+        if not self._smtp:
+            return
+        try:
+            tenant_id = str(solicitud["tenant_id"])
+            user_id = str(solicitud["user_id"])
+
+            user = await self._users.get_by_id(user_id)
+            if not user or not user.get("email"):
+                return
+
+            cfg = await self._smtp.get_config(tenant_id)
+            if not cfg:
+                return
+
+            nombre = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip() or "Colaborador"
+            tipo_info = solicitud.get("tipos_licencia") or {}
+            tipo_nombre = tipo_info.get("nombre", "Licencia") if isinstance(tipo_info, dict) else "Licencia"
+            fecha_inicio = str(solicitud["fecha_inicio"])
+            fecha_fin = str(solicitud["fecha_fin"])
+            dias = solicitud.get("dias_habiles", "")
+
+            if resultado == "creada":
+                subject = "Tu solicitud de licencia fue recibida — NUMI"
+                html = f"""
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                  <h2 style="color:#e87d50">Solicitud recibida</h2>
+                  <p>Hola {nombre}, recibimos tu solicitud de <strong>{tipo_nombre}</strong>.</p>
+                  <ul style="line-height:2">
+                    <li>Fecha inicio: <strong>{fecha_inicio}</strong></li>
+                    <li>Fecha fin: <strong>{fecha_fin}</strong></li>
+                    <li>Días hábiles: <strong>{dias}</strong></li>
+                  </ul>
+                  <p style="color:#475569">Tu solicitud está siendo revisada. Te notificaremos cuando tenga una resolución.</p>
+                </div>
+                """
+            elif resultado == "aprobada":
+                subject = "Tu licencia fue aprobada — NUMI"
+                extra = f"<p><strong>Comentario:</strong> {comentario}</p>" if comentario else ""
+                html = f"""
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                  <h2 style="color:#22c55e">Licencia aprobada ✓</h2>
+                  <p>Hola {nombre}, tu solicitud de <strong>{tipo_nombre}</strong> fue <strong>aprobada</strong>.</p>
+                  <ul style="line-height:2">
+                    <li>Fecha inicio: <strong>{fecha_inicio}</strong></li>
+                    <li>Fecha fin: <strong>{fecha_fin}</strong></li>
+                    <li>Días hábiles: <strong>{dias}</strong></li>
+                  </ul>
+                  {extra}
+                </div>
+                """
+            elif resultado == "rechazada":
+                motivo = comentario or "Sin motivo especificado"
+                subject = "Tu licencia fue rechazada — NUMI"
+                html = f"""
+                <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:32px 24px">
+                  <h2 style="color:#ef4444">Licencia rechazada</h2>
+                  <p>Hola {nombre}, tu solicitud de <strong>{tipo_nombre}</strong> fue <strong>rechazada</strong>.</p>
+                  <ul style="line-height:2">
+                    <li>Fecha inicio: <strong>{fecha_inicio}</strong></li>
+                    <li>Fecha fin: <strong>{fecha_fin}</strong></li>
+                  </ul>
+                  <p><strong>Motivo:</strong> {motivo}</p>
+                </div>
+                """
+            else:
+                return
+
+            await self._smtp._send(cfg, user["email"], subject, html)
+        except Exception as exc:
+            logger.error("Error sending email notification for licencia: %s", exc)

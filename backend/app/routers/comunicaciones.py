@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from supabase._async.client import AsyncClient
 
+from app.core.config import get_settings, Settings
 from app.db.supabase import get_supabase
 from app.dependencies.auth import get_current_user, require_role
 from app.repositories.comunicacion_adjunto_repository import ComunicacionAdjuntoRepository
 from app.repositories.comunicacion_destinatario_repository import ComunicacionDestinatarioRepository
 from app.repositories.comunicacion_repository import ComunicacionRepository
+from app.repositories.numi_smtp_repository import NumiSmtpRepository
+from app.repositories.smtp_config_repository import SmtpConfigRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.whatsapp_config_repository import WhatsappConfigRepository
+from app.services.smtp_service import SmtpService
 from app.schemas.comunicaciones import (
     AdjuntoOut,
     ConfirmarResponse,
@@ -18,14 +22,20 @@ from app.schemas.comunicaciones import (
     EnviarResponse,
     PaginatedComunicaciones,
     PaginatedComunicacionesColaborador,
+    ReenviarRequest,
     ReenviarResponse,
+    RecordatorioEmailRequest,
+    RecordatorioEmailResponse,
 )
 from app.services.comunicacion_service import ComunicacionService
 
 router = APIRouter(prefix="/comunicaciones", tags=["comunicaciones"])
 
 
-def _get_service(db: AsyncClient = Depends(get_supabase)) -> ComunicacionService:
+def _get_service(
+    db: AsyncClient = Depends(get_supabase),
+    settings: Settings = Depends(get_settings),
+) -> ComunicacionService:
     return ComunicacionService(
         db=db,
         comunicaciones=ComunicacionRepository(db),
@@ -33,6 +43,7 @@ def _get_service(db: AsyncClient = Depends(get_supabase)) -> ComunicacionService
         adjuntos=ComunicacionAdjuntoRepository(db),
         users=UserRepository(db),
         wa_config=WhatsappConfigRepository(db),
+        smtp_service=SmtpService(SmtpConfigRepository(db), settings.encryption_key, NumiSmtpRepository(db)),
     )
 
 
@@ -43,7 +54,7 @@ async def list_comunicaciones(
     estado: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
     svc: ComunicacionService = Depends(_get_service),
 ):
     return await svc.list_by_tenant(
@@ -56,7 +67,7 @@ async def list_comunicaciones(
 @router.post("", response_model=ComunicacionOut, status_code=status.HTTP_201_CREATED)
 async def create_comunicacion(
     body: ComunicacionCreate,
-    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
     svc: ComunicacionService = Depends(_get_service),
 ):
     return await svc.create(
@@ -85,7 +96,7 @@ async def list_comunicaciones_colaborador(
 @router.get("/{id}", response_model=ComunicacionOut)
 async def get_comunicacion(
     id: str,
-    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
     svc: ComunicacionService = Depends(_get_service),
 ):
     return await svc.get(str(current_user["tenant_id"]), id)
@@ -96,7 +107,7 @@ async def get_comunicacion(
 @router.get("/{id}/destinatarios", response_model=list[DestinatarioOut])
 async def list_destinatarios(
     id: str,
-    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
     svc: ComunicacionService = Depends(_get_service),
 ):
     return await svc.list_destinatarios(str(current_user["tenant_id"]), id)
@@ -108,7 +119,7 @@ async def list_destinatarios(
 async def add_adjunto(
     id: str,
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
     svc: ComunicacionService = Depends(_get_service),
 ):
     return await svc.add_adjunto(str(current_user["tenant_id"]), id, file)
@@ -119,7 +130,7 @@ async def add_adjunto(
 @router.post("/{id}/enviar", response_model=EnviarResponse, status_code=status.HTTP_202_ACCEPTED)
 async def enviar_comunicacion(
     id: str,
-    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
     svc: ComunicacionService = Depends(_get_service),
 ):
     return await svc.enviar(str(current_user["tenant_id"]), id)
@@ -130,10 +141,21 @@ async def enviar_comunicacion(
 @router.post("/{id}/reenviar", response_model=ReenviarResponse, status_code=status.HTTP_202_ACCEPTED)
 async def reenviar_comunicacion(
     id: str,
-    current_user: dict = Depends(require_role("rrhh", "admin", "super_admin")),
+    data: ReenviarRequest = ReenviarRequest(),
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
     svc: ComunicacionService = Depends(_get_service),
 ):
-    return await svc.reenviar(str(current_user["tenant_id"]), id)
+    return await svc.reenviar(str(current_user["tenant_id"]), id, data.user_ids)
+
+
+@router.post("/{id}/recordatorio-email", response_model=RecordatorioEmailResponse, status_code=status.HTTP_202_ACCEPTED)
+async def recordatorio_email(
+    id: str,
+    data: RecordatorioEmailRequest,
+    current_user: dict = Depends(require_role("rrhh", "super_admin")),
+    svc: ComunicacionService = Depends(_get_service),
+):
+    return await svc.recordatorio_email(str(current_user["tenant_id"]), id, data.user_ids)
 
 
 # ── Colaborador: marcar como leído ───────────────────────────────────────────

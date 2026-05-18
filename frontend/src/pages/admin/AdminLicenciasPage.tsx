@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Calendar, Check, X, Clock, Filter, History, ChevronRight } from "lucide-react";
+import { Calendar, Check, X, Clock, Filter, History, ChevronRight, Eye, Search } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
@@ -104,13 +104,32 @@ function HistorialModal({ solicitudId, onClose }: HistorialModalProps) {
                           color,
                         }}
                       >
-                        {paso.estado}
+                        {paso.estado === "aprobado" && paso.tipo_accion === "solo_ver"
+                          ? "Visualizado"
+                          : paso.estado}
                       </span>
                     </div>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
-                      {paso.tipo_aprobador === "rol"
-                        ? `Rol: ${paso.rol_aprobador ?? "—"}`
-                        : `Departamento: ${paso.departamento_nombre ?? "—"}`}
+                    <p className="text-xs mt-0.5 flex items-center gap-1.5 flex-wrap" style={{ color: "var(--color-content-secondary)" }}>
+                      <span>
+                        {paso.tipo_aprobador === "rol"
+                          ? `Rol: ${paso.rol_aprobador ?? "—"}`
+                          : `Departamento: ${paso.departamento_nombre ?? "—"}`}
+                      </span>
+                      <span style={{ color: "var(--color-surface-border)" }}>·</span>
+                      <span
+                        className="inline-flex items-center gap-1 font-medium"
+                        style={{
+                          color: paso.tipo_accion === "solo_ver"
+                            ? "var(--color-content-secondary)"
+                            : paso.tipo_accion === "derivar"
+                              ? "var(--color-primary)"
+                              : "var(--color-content-primary)",
+                        }}
+                      >
+                        {paso.tipo_accion === "solo_ver" && "Solo ver"}
+                        {paso.tipo_accion === "derivar" && "Deriva al siguiente"}
+                        {paso.tipo_accion === "aprobar" && "Aprueba / Rechaza"}
+                      </span>
                     </p>
                     {paso.aprobado_por_nombre && (
                       <p className="text-xs mt-0.5" style={{ color: "var(--color-content-secondary)" }}>
@@ -231,7 +250,7 @@ function ReviewModal({ solicitud, action, onClose, onDone }: ReviewModalProps) {
             Nº {solicitud.numero_solicitud}
           </p>
           {usesPasoFlow && solicitud.paso_actual && (
-            <p className="text-xs mt-1 font-medium" style={{ color: "#7c3aed" }}>
+            <p className="text-xs mt-1 font-medium" style={{ color: "var(--color-primary)" }}>
               Paso {solicitud.paso_actual} del flujo de aprobación
             </p>
           )}
@@ -281,6 +300,7 @@ export function AdminLicenciasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>("pendiente");
+  const [search, setSearch] = useState("");
   const [modal, setModal] = useState<{
     solicitud: SolicitudLicencia;
     action: "aprobar" | "rechazar";
@@ -295,7 +315,7 @@ export function AdminLicenciasPage() {
         estado: filtroEstado || undefined,
         page_size: 50,
       });
-      setSolicitudes(res.data);
+      setSolicitudes(res.data ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar solicitudes");
     } finally {
@@ -320,7 +340,24 @@ export function AdminLicenciasPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 rounded-lg border px-3 py-2"
+            style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-card)", minWidth: 220 }}>
+            <Search size={13} style={{ color: "var(--color-content-secondary)", flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Nombre, CUIL o N° licencia…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="text-sm outline-none bg-transparent flex-1"
+              style={{ color: "var(--color-content-primary)" }}
+            />
+            {search && (
+              <button onClick={() => setSearch("")} style={{ color: "var(--color-content-disabled)" }}>
+                <X size={12} />
+              </button>
+            )}
+          </div>
           <Filter size={14} style={{ color: "var(--color-content-secondary)" }} />
           <select
             value={filtroEstado}
@@ -342,17 +379,30 @@ export function AdminLicenciasPage() {
 
       {loading ? (
         <div className="flex justify-center py-12"><Spinner size={28} /></div>
-      ) : solicitudes.length === 0 ? (
-        <EmptyState
-          icon={Clock}
-          title="Sin solicitudes"
-          description={filtroEstado ? `No hay solicitudes en estado "${filtroEstado}".` : "No hay solicitudes de licencia."}
-        />
-      ) : (
+      ) : (() => {
+        const term = search.toLowerCase().trim();
+        const filtered = term
+          ? solicitudes.filter(s =>
+              s.user_nombre?.toLowerCase().includes(term) ||
+              s.user_cuil?.toLowerCase().includes(term) ||
+              s.numero_solicitud?.toLowerCase().includes(term)
+            )
+          : solicitudes;
+
+        if (filtered.length === 0) return (
+          <EmptyState
+            icon={Clock}
+            title="Sin solicitudes"
+            description={term ? `No hay resultados para "${search}".` : filtroEstado ? `No hay solicitudes en estado "${filtroEstado}".` : "No hay solicitudes de licencia."}
+          />
+        );
+
+        return (
         <div className="flex flex-col gap-3">
-          {solicitudes.map((sol) => {
+          {filtered.map((sol) => {
             const badge = estadoBadge[sol.estado];
-            const canReview = sol.estado === "pendiente" || sol.estado === "en_revision";
+            const isSoloVer = sol.mi_tipo_accion === "solo_ver";
+            const canReview = (sol.estado === "pendiente" || sol.estado === "en_revision") && !isSoloVer;
             return (
               <div
                 key={sol.id}
@@ -367,9 +417,17 @@ export function AdminLicenciasPage() {
                       </span>
                       <Badge variant={estadoToVariant(sol.estado)} label={badge.label} />
                       {sol.flujo_id && sol.paso_actual && (
-                        <span className="text-xs flex items-center gap-1" style={{ color: "#7c3aed" }}>
+                        <span className="text-xs flex items-center gap-1" style={{ color: "var(--color-primary)" }}>
                           <ChevronRight size={11} />
                           Paso {sol.paso_actual}
+                        </span>
+                      )}
+                      {isSoloVer && (
+                        <span
+                          className="text-xs flex items-center gap-1 px-2 py-0.5 rounded-lg font-medium"
+                          style={{ background: "var(--color-surface-empty)", color: "var(--color-content-secondary)" }}
+                        >
+                          <Eye size={11} /> Solo ver
                         </span>
                       )}
                       <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
@@ -435,7 +493,8 @@ export function AdminLicenciasPage() {
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {modal && (
         <ReviewModal
