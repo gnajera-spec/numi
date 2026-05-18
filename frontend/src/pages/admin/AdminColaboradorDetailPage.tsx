@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Save, User } from "lucide-react";
+import { ArrowLeft, Save, User, Clock, FileText, Upload, Trash2, Download, X } from "lucide-react";
 import { AdminLayout } from "../../components/AdminLayout";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
@@ -8,7 +8,10 @@ import { ErrorBanner } from "../../components/ErrorBanner";
 import { Spinner } from "../../components/Spinner";
 import { adminUsuariosService } from "../../services/adminUsuariosService";
 import { organizacionService } from "../../services/organizacionService";
-import type { UserDetail, EstadoUsuario, Sede, Departamento, Puesto, Convenio, UpdateUserRequest } from "../../types";
+import type {
+  UserDetail, EstadoUsuario, Sede, Departamento, Puesto, Convenio,
+  UpdateUserRequest, HorarioLaboral, ColaboradorDocumento,
+} from "../../types";
 
 const estadoVariant: Record<EstadoUsuario, "activo" | "pendiente" | "suspendido" | "baja"> = {
   activo:     "activo",
@@ -22,6 +25,30 @@ const estadoLabel: Record<EstadoUsuario, string> = {
   suspendido: "Suspendido",
   baja:       "De baja",
 };
+
+const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+
+const TIPO_LABELS: Record<string, string> = {
+  cv: "CV",
+  titulo: "Título",
+  certificado: "Certificado",
+  contrato: "Contrato",
+  otro: "Otro",
+};
+
+const TIPO_COLORS: Record<string, { bg: string; color: string }> = {
+  cv:           { bg: "var(--color-primary-xlight)", color: "var(--color-primary)" },
+  titulo:       { bg: "#dcfce7", color: "#16a34a" },
+  certificado:  { bg: "#fef9c3", color: "#ca8a04" },
+  contrato:     { bg: "#ede9fe", color: "#7c3aed" },
+  otro:         { bg: "var(--color-surface-empty)", color: "var(--color-content-secondary)" },
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 /* ── Field label ─────────────────────────────────────────────────────────── */
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -83,18 +110,27 @@ function SelectInput({
 }
 
 /* ── Sección del formulario ──────────────────────────────────────────────── */
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title, icon, children, action,
+}: {
+  title: string; icon?: React.ReactNode;
+  children: React.ReactNode; action?: React.ReactNode;
+}) {
   return (
     <div
       className="rounded-xl border p-5"
       style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}
     >
-      <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--color-content-primary)" }}>
-        {title}
-      </h3>
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-        {children}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          {icon && <span style={{ color: "var(--color-content-secondary)" }}>{icon}</span>}
+          <h3 className="text-sm font-semibold" style={{ color: "var(--color-content-primary)" }}>
+            {title}
+          </h3>
+        </div>
+        {action}
       </div>
+      {children}
     </div>
   );
 }
@@ -105,6 +141,480 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <FieldLabel>{label}</FieldLabel>
       {children}
     </div>
+  );
+}
+
+/* ── Horario Section ─────────────────────────────────────────────────────── */
+function HorarioSection({ userId }: { userId: string }) {
+  const [horarios, setHorarios] = useState<Map<number, { inicio: string; fin: string }>>(new Map());
+  const [activeDays, setActiveDays] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    adminUsuariosService.getHorarios(userId)
+      .then(data => {
+        const map = new Map<number, { inicio: string; fin: string }>();
+        const active = new Set<number>();
+        for (const h of data) {
+          map.set(h.dia_semana, { inicio: h.hora_inicio, fin: h.hora_fin });
+          active.add(h.dia_semana);
+        }
+        setHorarios(map);
+        setActiveDays(active);
+      })
+      .catch(() => {/* silently ignore, empty horario is valid */})
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const toggleDay = (dia: number) => {
+    setActiveDays(prev => {
+      const next = new Set(prev);
+      if (next.has(dia)) {
+        next.delete(dia);
+      } else {
+        next.add(dia);
+        if (!horarios.has(dia)) {
+          setHorarios(m => new Map(m).set(dia, { inicio: "08:00", fin: "17:00" }));
+        }
+      }
+      return next;
+    });
+  };
+
+  const setTime = (dia: number, field: "inicio" | "fin", value: string) => {
+    setHorarios(prev => {
+      const next = new Map(prev);
+      const current = next.get(dia) ?? { inicio: "08:00", fin: "17:00" };
+      next.set(dia, { ...current, [field]: value });
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    const payload: HorarioLaboral[] = [...activeDays].sort().map(dia => ({
+      dia_semana: dia,
+      hora_inicio: horarios.get(dia)?.inicio ?? "08:00",
+      hora_fin: horarios.get(dia)?.fin ?? "17:00",
+    }));
+    const invalid = payload.find(h => h.hora_fin <= h.hora_inicio);
+    if (invalid) {
+      setError(`${DIAS[invalid.dia_semana - 1]}: la hora de salida debe ser posterior a la de entrada`);
+      setSaving(false);
+      return;
+    }
+    try {
+      const result = await adminUsuariosService.saveHorarios(userId, payload);
+      const map = new Map<number, { inicio: string; fin: string }>();
+      const active = new Set<number>();
+      for (const h of result) {
+        map.set(h.dia_semana, { inicio: h.hora_inicio, fin: h.hora_fin });
+        active.add(h.dia_semana);
+      }
+      setHorarios(map);
+      setActiveDays(active);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Section title="Horario laboral" icon={<Clock size={15} />}>
+        <div className="flex justify-center py-6"><Spinner size={20} /></div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section
+      title="Horario laboral"
+      icon={<Clock size={15} />}
+      action={
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-xs font-medium" style={{ color: "var(--color-state-present)" }}>Guardado</span>}
+          {error && <span className="text-xs" style={{ color: "var(--color-state-absent)" }}>{error}</span>}
+          <Button variant="primary" loading={saving} onClick={handleSave}>
+            <Save size={13} style={{ marginRight: 5 }} />
+            Guardar horario
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+        {DIAS.map((nombre, idx) => {
+          const dia = idx + 1;
+          const active = activeDays.has(dia);
+          const h = horarios.get(dia);
+          return (
+            <div
+              key={dia}
+              className="rounded-lg border p-3 flex flex-col gap-2 transition-all"
+              style={{
+                borderColor: active ? "var(--color-primary)" : "var(--color-surface-border)",
+                background: active ? "var(--color-primary-xlight)" : "var(--color-surface-empty)",
+              }}
+            >
+              {/* Day toggle row */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold" style={{ color: active ? "var(--color-primary)" : "var(--color-content-secondary)" }}>
+                  {nombre}
+                </span>
+                <button
+                  onClick={() => toggleDay(dia)}
+                  className="relative flex-shrink-0"
+                  style={{
+                    width: 36, height: 20, borderRadius: 10,
+                    background: active ? "var(--color-primary)" : "var(--color-surface-border)",
+                    border: "none", cursor: "pointer", transition: "background 0.2s",
+                  }}
+                >
+                  <span style={{
+                    position: "absolute", top: 2,
+                    left: active ? 18 : 2,
+                    width: 16, height: 16, borderRadius: "50%",
+                    background: "white", transition: "left 0.2s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  }} />
+                </button>
+              </div>
+              {/* Time inputs */}
+              {active && (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs w-12 flex-shrink-0" style={{ color: "var(--color-content-secondary)" }}>Entrada</span>
+                    <input
+                      type="time"
+                      value={h?.inicio ?? "08:00"}
+                      onChange={e => setTime(dia, "inicio", e.target.value)}
+                      className="flex-1 min-w-0 rounded border px-2 py-1 text-xs outline-none"
+                      style={{
+                        borderColor: "var(--color-surface-border)",
+                        color: "var(--color-content-primary)",
+                        background: "var(--color-surface-card)",
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs w-12 flex-shrink-0" style={{ color: "var(--color-content-secondary)" }}>Salida</span>
+                    <input
+                      type="time"
+                      value={h?.fin ?? "17:00"}
+                      onChange={e => setTime(dia, "fin", e.target.value)}
+                      className="flex-1 min-w-0 rounded border px-2 py-1 text-xs outline-none"
+                      style={{
+                        borderColor: "var(--color-surface-border)",
+                        color: "var(--color-content-primary)",
+                        background: "var(--color-surface-card)",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              {!active && (
+                <span className="text-xs" style={{ color: "var(--color-content-disabled)" }}>No trabaja</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+/* ── Documentos Section ──────────────────────────────────────────────────── */
+function DocumentosSection({ userId }: { userId: string }) {
+  const [docs, setDocs] = useState<ColaboradorDocumento[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ColaboradorDocumento | null>(null);
+
+  const [uploadTipo, setUploadTipo] = useState("cv");
+  const [uploadDesc, setUploadDesc] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadDocs = () => {
+    adminUsuariosService.getDocumentos(userId)
+      .then(setDocs)
+      .catch(() => {/* empty is ok */})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadDocs(); }, [userId]);
+
+  const handleUpload = async () => {
+    if (!uploadFile) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const doc = await adminUsuariosService.uploadDocumento(userId, uploadFile, uploadTipo, uploadDesc || undefined);
+      setDocs(prev => [doc, ...prev]);
+      setShowUpload(false);
+      setUploadFile(null);
+      setUploadDesc("");
+      setUploadTipo("cv");
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Error al subir");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (doc: ColaboradorDocumento) => {
+    setDeletingId(doc.id);
+    try {
+      await adminUsuariosService.deleteDocumento(userId, doc.id);
+      setDocs(prev => prev.filter(d => d.id !== doc.id));
+    } catch {
+      /* ignore */
+    } finally {
+      setDeletingId(null);
+      setConfirmDelete(null);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) setUploadFile(f);
+  };
+
+  return (
+    <Section
+      title="Documentación"
+      icon={<FileText size={15} />}
+      action={
+        <button
+          onClick={() => { setShowUpload(v => !v); setUploadError(null); }}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
+          style={{
+            background: showUpload ? "var(--color-surface-empty)" : "var(--color-primary-xlight)",
+            color: showUpload ? "var(--color-content-secondary)" : "var(--color-primary)",
+            border: "none", cursor: "pointer",
+          }}
+        >
+          {showUpload ? <><X size={13} /> Cancelar</> : <><Upload size={13} /> Agregar documento</>}
+        </button>
+      }
+    >
+      {/* Upload panel */}
+      {showUpload && (
+        <div
+          className="rounded-lg border p-4 mb-4"
+          style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-empty)" }}
+        >
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+            <Field label="Tipo de documento">
+              <select
+                value={uploadTipo}
+                onChange={e => setUploadTipo(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{
+                  borderColor: "var(--color-surface-border)",
+                  color: "var(--color-content-primary)",
+                  background: "var(--color-surface-card)",
+                }}
+              >
+                {Object.entries(TIPO_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Descripción (opcional)">
+              <input
+                type="text"
+                value={uploadDesc}
+                onChange={e => setUploadDesc(e.target.value)}
+                placeholder="Ej: Título universitario 2020"
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{
+                  borderColor: "var(--color-surface-border)",
+                  color: "var(--color-content-primary)",
+                  background: "var(--color-surface-card)",
+                }}
+              />
+            </Field>
+          </div>
+
+          {/* Drop zone */}
+          <div
+            className="mt-3 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors"
+            style={{
+              borderColor: dragOver ? "var(--color-primary)" : "var(--color-surface-border)",
+              background: dragOver ? "var(--color-primary-xlight)" : "var(--color-surface-card)",
+              minHeight: 90, padding: "16px 12px",
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={e => { if (e.target.files?.[0]) setUploadFile(e.target.files[0]); }}
+            />
+            {uploadFile ? (
+              <div className="flex items-center gap-2">
+                <FileText size={16} style={{ color: "var(--color-primary)" }} />
+                <span className="text-sm font-medium" style={{ color: "var(--color-content-primary)" }}>
+                  {uploadFile.name}
+                </span>
+                <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>
+                  ({formatBytes(uploadFile.size)})
+                </span>
+                <button
+                  onClick={e => { e.stopPropagation(); setUploadFile(null); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                >
+                  <X size={14} style={{ color: "var(--color-content-secondary)" }} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <Upload size={20} style={{ color: "var(--color-content-disabled)", marginBottom: 6 }} />
+                <span className="text-xs text-center" style={{ color: "var(--color-content-secondary)" }}>
+                  Arrastrá el archivo aquí o <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>hacé click para seleccionar</span>
+                </span>
+                <span className="text-xs mt-1" style={{ color: "var(--color-content-disabled)" }}>Máximo 20 MB</span>
+              </>
+            )}
+          </div>
+
+          {uploadError && <p className="text-xs mt-2" style={{ color: "var(--color-state-absent)" }}>{uploadError}</p>}
+
+          <div className="flex justify-end mt-3">
+            <Button variant="primary" loading={uploading} onClick={handleUpload} disabled={!uploadFile}>
+              <Upload size={13} style={{ marginRight: 5 }} />
+              Subir documento
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Document list */}
+      {loading ? (
+        <div className="flex justify-center py-6"><Spinner size={20} /></div>
+      ) : docs.length === 0 ? (
+        <div className="flex flex-col items-center py-8 gap-2">
+          <FileText size={32} style={{ color: "var(--color-content-disabled)" }} />
+          <p className="text-sm" style={{ color: "var(--color-content-secondary)" }}>Aún no hay documentos en el legajo</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {docs.map(doc => {
+            const tc = TIPO_COLORS[doc.tipo] ?? TIPO_COLORS.otro;
+            return (
+              <div
+                key={doc.id}
+                className="flex items-center gap-3 rounded-lg border px-4 py-3"
+                style={{ borderColor: "var(--color-surface-border)", background: "var(--color-surface-empty)" }}
+              >
+                <FileText size={18} style={{ color: "var(--color-content-secondary)", flexShrink: 0 }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium truncate" style={{ color: "var(--color-content-primary)" }}>
+                      {doc.filename}
+                    </span>
+                    <span
+                      className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{ background: tc.bg, color: tc.color }}
+                    >
+                      {TIPO_LABELS[doc.tipo] ?? doc.tipo}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    {doc.descripcion && (
+                      <span className="text-xs" style={{ color: "var(--color-content-secondary)" }}>{doc.descripcion}</span>
+                    )}
+                    <span className="text-xs" style={{ color: "var(--color-content-disabled)" }}>
+                      {formatBytes(doc.file_size_bytes)} · {new Date(doc.created_at).toLocaleDateString("es-AR")}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <a
+                    href={doc.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center rounded-lg p-2 transition-colors"
+                    style={{ color: "var(--color-primary)", background: "var(--color-primary-xlight)", border: "none" }}
+                    title="Descargar"
+                  >
+                    <Download size={14} />
+                  </a>
+                  <button
+                    onClick={() => setConfirmDelete(doc)}
+                    className="flex items-center justify-center rounded-lg p-2 transition-colors"
+                    style={{ color: "var(--color-state-absent)", background: "#fff1f2", border: "none", cursor: "pointer" }}
+                    title="Eliminar"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Confirm delete modal */}
+      {confirmDelete && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
+          }}
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="rounded-xl border p-6 max-w-sm w-full mx-4"
+            style={{ background: "var(--color-surface-card)", borderColor: "var(--color-surface-border)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-semibold mb-2" style={{ color: "var(--color-content-primary)" }}>
+              Eliminar documento
+            </h3>
+            <p className="text-sm mb-5" style={{ color: "var(--color-content-secondary)" }}>
+              ¿Eliminar <strong>{confirmDelete.filename}</strong>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="rounded-lg px-4 py-2 text-sm"
+                style={{ background: "var(--color-surface-empty)", border: "1px solid var(--color-surface-border)", color: "var(--color-content-primary)", cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deletingId === confirmDelete.id}
+                className="rounded-lg px-4 py-2 text-sm font-semibold"
+                style={{ background: "var(--color-state-absent)", color: "white", border: "none", cursor: "pointer" }}
+              >
+                {deletingId === confirmDelete.id ? "Eliminando..." : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -273,73 +783,85 @@ export function AdminColaboradorDetailPage() {
 
         {/* Datos personales */}
         <Section title="Datos personales">
-          <Field label="Nombre">
-            <TextInput value={firstName} onChange={setFirstName} />
-          </Field>
-          <Field label="Apellido">
-            <TextInput value={lastName} onChange={setLastName} />
-          </Field>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            <Field label="Nombre">
+              <TextInput value={firstName} onChange={setFirstName} />
+            </Field>
+            <Field label="Apellido">
+              <TextInput value={lastName} onChange={setLastName} />
+            </Field>
+          </div>
         </Section>
 
         {/* Legajo laboral */}
         <Section title="Legajo laboral">
-          <Field label="N° de legajo">
-            <TextInput value={legajo} onChange={setLegajo} placeholder="Ej: 001234" />
-          </Field>
-          <Field label="Fecha de ingreso">
-            <input
-              type="date"
-              value={fechaIngreso}
-              onChange={e => setFechaIngreso(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{
-                borderColor: "var(--color-surface-border)",
-                color: "var(--color-content-primary)",
-                background: "var(--color-surface-card)",
-              }}
-            />
-          </Field>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            <Field label="N° de legajo">
+              <TextInput value={legajo} onChange={setLegajo} placeholder="Ej: 001234" />
+            </Field>
+            <Field label="Fecha de ingreso">
+              <input
+                type="date"
+                value={fechaIngreso}
+                onChange={e => setFechaIngreso(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{
+                  borderColor: "var(--color-surface-border)",
+                  color: "var(--color-content-primary)",
+                  background: "var(--color-surface-card)",
+                }}
+              />
+            </Field>
+          </div>
         </Section>
 
         {/* Estructura organizativa */}
         <Section title="Estructura organizativa">
-          <Field label="Sede">
-            <SelectInput value={sedeId} onChange={setSedeId}>
-              <option value="">Sin asignar</option>
-              {sedes.map(s => (
-                <option key={s.id} value={s.id}>{s.nombre}</option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field label="Departamento">
-            <SelectInput value={deptId} onChange={setDeptId}>
-              <option value="">Sin asignar</option>
-              {flatDepts.map(d => (
-                <option key={d.id} value={d.id}>{d.nombre}</option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field label="Puesto">
-            <SelectInput value={puestoId} onChange={setPuestoId}>
-              <option value="">Sin asignar</option>
-              {puestos.map(p => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field label="Convenio colectivo">
-            <SelectInput value={convenioId} onChange={setConvenioId}>
-              <option value="">Sin asignar</option>
-              {convenios.map(c => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </SelectInput>
-          </Field>
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            <Field label="Sede">
+              <SelectInput value={sedeId} onChange={setSedeId}>
+                <option value="">Sin asignar</option>
+                {sedes.map(s => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Departamento">
+              <SelectInput value={deptId} onChange={setDeptId}>
+                <option value="">Sin asignar</option>
+                {flatDepts.map(d => (
+                  <option key={d.id} value={d.id}>{d.nombre}</option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Puesto">
+              <SelectInput value={puestoId} onChange={setPuestoId}>
+                <option value="">Sin asignar</option>
+                {puestos.map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field label="Convenio colectivo">
+              <SelectInput value={convenioId} onChange={setConvenioId}>
+                <option value="">Sin asignar</option>
+                {convenios.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </SelectInput>
+            </Field>
+          </div>
         </Section>
+
+        {/* Horario laboral */}
+        {id && <HorarioSection userId={id} />}
+
+        {/* Documentación */}
+        {id && <DocumentosSection userId={id} />}
 
       </div>
 
-      {/* Acciones */}
+      {/* Acciones principales */}
       <div className="flex items-center justify-between mt-6 flex-wrap gap-3">
         {saveError && <ErrorBanner message={saveError} />}
         {saved && (

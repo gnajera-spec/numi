@@ -105,6 +105,8 @@ export interface SolicitudLicencia {
   medico_apellido?: string;
   medico_matricula?: string;
   dias_reposo?: number;
+  // Attached documents (documentos_solicitud)
+  documentos?: { id: string; filename: string; file_url: string; mime_type?: string }[];
 }
 
 export interface SaldoLicencia {
@@ -609,4 +611,24 @@ export interface AptitudPorVencerItem {
   estado: string;
   fecha_vencimiento: string;
   dias_restantes: number;
+}
+
+// Horario laboral
+export interface HorarioLaboral {
+  dia_semana: number; // 1=Lun … 7=Dom
+  hora_inicio: string; // "HH:MM"
+  hora_fin: string;
+}
+
+// Documentos del legajo
+export interface ColaboradorDocumento {
+  id: string;
+  tipo: string;
+  filename: string;
+  file_url: string;
+  file_size_bytes: number;
+  mime_type: string;
+  descripcion?: string | null;
+  uploaded_by: string;
+  created_at: string;
 }

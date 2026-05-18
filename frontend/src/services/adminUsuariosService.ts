@@ -1,5 +1,30 @@
 import { apiClient } from "../lib/apiClient";
-import type { UserSummary, UserDetail, CreateUserRequest, UpdateUserRequest, Paginated } from "../types";
+import type { UserSummary, UserDetail, CreateUserRequest, UpdateUserRequest, Paginated, RolUsuario, HorarioLaboral, ColaboradorDocumento } from "../types";
+
+const BASE_URL = (import.meta as unknown as { env: { VITE_API_URL?: string } }).env.VITE_API_URL ?? "";
+
+async function uploadDocumentoMultipart(userId: string, file: File, tipo: string, descripcion?: string): Promise<ColaboradorDocumento> {
+  const token = localStorage.getItem("access_token");
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("tipo", tipo);
+  if (descripcion) fd.append("descripcion", descripcion);
+  const res = await fetch(`${BASE_URL}/users/${userId}/documentos`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd,
+  });
+  if (res.status === 401) {
+    localStorage.removeItem("access_token");
+    window.location.href = "/admin/login";
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail ?? "Error al subir documento");
+  }
+  return res.json() as Promise<ColaboradorDocumento>;
+}
 
 export const adminUsuariosService = {
   list: (params: {
@@ -41,6 +66,24 @@ export const adminUsuariosService = {
 
   update: (id: string, data: UpdateUserRequest) =>
     apiClient.patch<UserDetail>(`/users/${id}`, data),
+
+  setRoles: (id: string, roles: RolUsuario[]) =>
+    apiClient.patch<UserSummary>(`/users/${id}/roles`, { roles }),
+
+  getHorarios: (id: string) =>
+    apiClient.get<HorarioLaboral[]>(`/users/${id}/horarios`),
+
+  saveHorarios: (id: string, horarios: HorarioLaboral[]) =>
+    apiClient.put<HorarioLaboral[]>(`/users/${id}/horarios`, { horarios }),
+
+  getDocumentos: (id: string) =>
+    apiClient.get<ColaboradorDocumento[]>(`/users/${id}/documentos`),
+
+  uploadDocumento: (id: string, file: File, tipo: string, descripcion?: string) =>
+    uploadDocumentoMultipart(id, file, tipo, descripcion),
+
+  deleteDocumento: (userId: string, docId: string) =>
+    apiClient.delete<void>(`/users/${userId}/documentos/${docId}`),
 };
 
 // ── Invitaciones ──────────────────────────────────────────────────────────────
@@ -58,7 +101,22 @@ export interface LoteResultado {
   errores: { cuil: string; email: string; error: string }[];
 }
 
+export interface InvitacionPendiente {
+  token: string;
+  email: string;
+  cuil: string;
+  link: string;
+  expires_at: string;
+  created_at: string;
+}
+
 export const invitacionesService = {
+  listPendientes: () =>
+    apiClient.get<InvitacionPendiente[]>("/admin/invitaciones"),
+
+  eliminar: (token: string) =>
+    apiClient.delete<void>(`/admin/invitaciones/${token}`),
+
   invitarIndividual: (cuil: string, email: string) =>
     apiClient.post<InvitacionCreada>("/admin/invitaciones/individual", { cuil, email }),
 
@@ -69,11 +127,16 @@ export const invitacionesService = {
     const token = localStorage.getItem("access_token");
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch("/admin/invitaciones/lote/csv", {
+    const res = await fetch(`${BASE_URL}/admin/invitaciones/lote/csv`, {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: formData,
     });
+    if (res.status === 401) {
+      localStorage.removeItem("access_token");
+      window.location.href = "/admin/login";
+      throw new Error("Unauthorized");
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail ?? "Error al procesar CSV");
@@ -95,11 +158,19 @@ export const onboardingService = {
   getInfo: (token: string) =>
     apiClient.get<OnboardingTokenInfo>(`/onboarding/${token}`),
 
+  sendCode: (token: string) =>
+    apiClient.post<{ message: string; email: string }>(`/onboarding/${token}/send-code`, {}),
+
+  verifyCode: (token: string, code: string) =>
+    apiClient.post<{ message: string }>(`/onboarding/${token}/verify-code`, { code }),
+
   completar: (token: string, data: {
     nombre: string;
     apellido: string;
     email: string;
     nro_documento: string;
+    fecha_nacimiento?: string;
+    genero?: string;
     password: string;
   }) => apiClient.post<{ message: string; user_id: string }>(`/onboarding/${token}/completar`, data),
 };

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.schemas.user import UserSummary
 
@@ -121,3 +121,55 @@ class BajaRequest(BaseModel):
 class InviteResponse(BaseModel):
     expires_at: datetime
     sent_via: str = "whatsapp"
+
+
+# ── Horario laboral ───────────────────────────────────────────────────────────
+
+class HorarioItem(BaseModel):
+    dia_semana: int = Field(..., ge=1, le=7)
+    hora_inicio: str
+    hora_fin: str
+
+
+class HorarioRequest(BaseModel):
+    horarios: list[HorarioItem]
+
+
+class HorarioOut(BaseModel):
+    dia_semana: int
+    hora_inicio: str
+    hora_fin: str
+
+
+# ── Colaborador documentos ────────────────────────────────────────────────────
+
+class ColaboradorDocumentoOut(BaseModel):
+    id: UUID
+    tipo: str
+    filename: str
+    file_url: str
+    file_size_bytes: int
+    mime_type: str
+    descripcion: str | None = None
+    uploaded_by: UUID
+    created_at: datetime
+
+
+_ALLOWED_TENANT_ROLES = {"colaborador", "rrhh", "admin_empresa", "servicio_medico"}
+
+
+class SetRolesRequest(BaseModel):
+    roles: list[str]
+
+    @field_validator("roles")
+    @classmethod
+    def validate_roles(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("Debe especificar al menos un rol")
+        invalid = set(v) - _ALLOWED_TENANT_ROLES
+        if invalid:
+            raise ValueError(f"Roles no permitidos: {', '.join(sorted(invalid))}")
+        result = list(set(v))
+        if "colaborador" not in result:
+            result.append("colaborador")
+        return result
